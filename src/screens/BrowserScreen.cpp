@@ -31,31 +31,38 @@ bool hasExt(const char* name, const char* ext) {
   return true;
 }
 
-void joinPath(char* out, size_t outSize, const char* dir, const char* name) {
-  if (strcmp(dir, "/") == 0) {
-    snprintf(out, outSize, "/%s", name);
-  } else {
-    snprintf(out, outSize, "%s/%s", dir, name);
+std::string joinPath(const char* dir, const char* name) {
+  if (!dir || dir[0] == '\0' || (dir[0] == '/' && dir[1] == '\0')) {
+    std::string out = "/";
+    out += name ? name : "";
+    return out;
   }
+  std::string out = dir;
+  if (out.back() != '/') {
+    out += '/';
+  }
+  out += name ? name : "";
+  return out;
 }
 }  // namespace
 
 BrowserScreen::BrowserScreen(Gfx& gfx, MappedInput& input, const char* initialPath, const Mode mode)
-    : Screen(mode == Mode::Firmware ? "Firmware" : "Browser", gfx, input), mode(mode) {
-  snprintf(path, sizeof(path), "%s", initialPath && initialPath[0] ? initialPath : "/");
-}
+    : Screen(mode == Mode::Firmware ? "Firmware" : "Browser", gfx, input),
+      path(initialPath && initialPath[0] ? initialPath : "/"), mode(mode) {}
 
 void BrowserScreen::load() {
   entries.clear();
   entries.reserve(64);
-  HalFile root = Storage.open(path);
+  HalFile root = Storage.open(path.c_str());
   if (!root || !root.isDirectory()) {
-    LOG_ERR("DIR", "Cannot open %s", path);
+    LOG_ERR("DIR", "Cannot open %s", path.c_str());
     return;
   }
-  char name[128];
+  char name[HalFile::kMaxNameBytes];
   for (HalFile file = root.openNextFile(); file; file = root.openNextFile()) {
-    file.getName(name, sizeof(name));
+    if (file.getName(name, sizeof(name)) == 0) {
+      continue;
+    }
     if (name[0] == '.' || strcmp(name, "System Volume Information") == 0) {
       continue;
     }
@@ -72,7 +79,7 @@ void BrowserScreen::load() {
     index = 0;
   }
   window = 0;
-  LOG_INF("DIR", "%s (%u items)", path, static_cast<unsigned>(entries.size()));
+  LOG_INF("DIR", "%s (%u items)", path.c_str(), static_cast<unsigned>(entries.size()));
 }
 
 void BrowserScreen::onEnter() {
@@ -82,15 +89,15 @@ void BrowserScreen::onEnter() {
 }
 
 void BrowserScreen::goUp() {
-  if (strcmp(path, "/") == 0) {
+  if (path == "/") {
     finish();
     return;
   }
-  char* slash = strrchr(path, '/');
-  if (!slash || slash == path) {
-    snprintf(path, sizeof(path), "/");
+  const auto slash = path.find_last_of('/');
+  if (slash == std::string::npos || slash == 0) {
+    path = "/";
   } else {
-    *slash = '\0';
+    path.resize(slash);
   }
   index = 0;
   load();
@@ -102,21 +109,18 @@ void BrowserScreen::activate() {
     return;
   }
   const std::string& name = entries[static_cast<size_t>(index)];
-  char next[256];
   if (!name.empty() && name.back() == '/') {
-    std::string dir = name.substr(0, name.size() - 1);
-    joinPath(next, sizeof(next), path, dir.c_str());
-    snprintf(path, sizeof(path), "%s", next);
-    LOG_DBG("DIR", "Enter %s", path);
+    path = joinPath(path.c_str(), name.substr(0, name.size() - 1).c_str());
+    LOG_DBG("DIR", "Enter %s", path.c_str());
     index = 0;
     load();
     requestUpdate();
     return;
   }
-  joinPath(next, sizeof(next), path, name.c_str());
-  LOG_INF("DIR", "Open %s", next);
+  const std::string next = joinPath(path.c_str(), name.c_str());
+  LOG_INF("DIR", "Open %s", next.c_str());
   if (mode == Mode::Firmware) {
-    auto screen = makeUniqueNoThrow<UpdateScreen>(gfx, input, next);
+    auto screen = makeUniqueNoThrow<UpdateScreen>(gfx, input, next.c_str());
     if (!screen) {
       LOG_ERR("DIR", "OOM: update");
       return;
@@ -124,7 +128,7 @@ void BrowserScreen::activate() {
     push(std::move(screen));
     return;
   }
-  goToReader(next);
+  goToReader(next.c_str());
 }
 
 void BrowserScreen::loop() {
@@ -142,7 +146,7 @@ void BrowserScreen::loop() {
 
 void BrowserScreen::render() {
   gfx.clear(false);
-  gfx.drawText(FONT_UI_BOLD, 12, 8, path);
+  gfx.drawText(FONT_UI_BOLD, 12, 8, path.c_str());
 
   const int rowH = gfx.lineHeight(FONT_UI) + 8;
   const int top = 40;

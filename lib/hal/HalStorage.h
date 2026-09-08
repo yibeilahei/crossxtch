@@ -73,6 +73,10 @@ class HalFile : public Print {
   HalFile& operator=(const HalFile&) = delete;
 
   void flush();
+  // SdFat getName() returns 0 and an empty string if `len` cannot hold the
+  // whole UTF-8 name plus NUL. FAT/exFAT LFN is 255 UTF-16 units, which is
+  // up to 765 UTF-8 bytes for BMP characters.
+  static constexpr size_t kMaxNameBytes = 768;
   size_t getName(char* name, size_t len);
   size_t size();
   size_t fileSize();

@@ -10,7 +10,7 @@ class BrowserScreen final : public Screen {
   enum class Mode : uint8_t { Books, Firmware };
 
  private:
-  char path[256] = "/";
+  std::string path = "/";
   std::vector<std::string> entries;
   int index = 0;
   int window = 0;

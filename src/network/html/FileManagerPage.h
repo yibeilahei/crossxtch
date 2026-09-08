@@ -346,6 +346,10 @@ function load() {
 
 function upload(file) {
   if (!file) return;
+  if (file.name.length > 255) {
+    status("Filename too long (max 255 characters)", "bad");
+    return;
+  }
   if (activeUpload) { status("Upload already in progress", "bad"); return; }
 
   const wrap = document.getElementById("uploadProgress");

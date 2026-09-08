@@ -31,23 +31,27 @@ void appendJsonEscaped(std::string& out, const char* s) {
   }
 }
 
-void joinPath(char* out, size_t outSize, const char* dir, const char* name) {
-  if (strcmp(dir, "/") == 0) {
-    snprintf(out, outSize, "/%s", name);
-  } else {
-    snprintf(out, outSize, "%s/%s", dir, name);
+std::string joinPath(const char* dir, const char* name) {
+  if (!dir || dir[0] == '\0' || (dir[0] == '/' && dir[1] == '\0')) {
+    std::string out = "/";
+    out += name ? name : "";
+    return out;
   }
+  std::string out = dir;
+  if (out.back() != '/') {
+    out += '/';
+  }
+  out += name ? name : "";
+  return out;
 }
 
-// Directory portion of `path` (parent folder), written into `out`. "/" if path has no parent.
-void dirnameOf(char* out, size_t outSize, const char* path) {
+// Directory portion of `path` (parent folder). "/" if path has no parent.
+std::string dirnameOf(const char* path) {
   const char* slash = strrchr(path, '/');
   if (!slash || slash == path) {
-    snprintf(out, outSize, "/");
-    return;
+    return "/";
   }
-  const size_t n = static_cast<size_t>(slash - path);
-  snprintf(out, outSize, "%.*s", static_cast<int>(n), path);
+  return std::string(path, static_cast<size_t>(slash - path));
 }
 
 // Final path segment (file/folder name) of `path`.
@@ -197,9 +201,12 @@ void FileTransferServer::handleFileList() const {
   json.reserve(1024);
   json.push_back('[');
   bool first = true;
-  char name[128];
+  char name[HalFile::kMaxNameBytes];
   for (HalFile file = dir.openNextFile(); file; file = dir.openNextFile()) {
-    file.getName(name, sizeof(name));
+    if (file.getName(name, sizeof(name)) == 0) {
+      LOG_ERR("XFER", "Skipping file with unreadable name");
+      continue;
+    }
     if (isProtectedPath(name)) {
       continue;
     }
@@ -236,9 +243,10 @@ void FileTransferServer::handleDownload() const {
     return;
   }
 
-  char header[192];
-  snprintf(header, sizeof(header), "attachment; filename=\"%s\"", basenameOf(path.c_str()));
-  server->sendHeader("Content-Disposition", header);
+  std::string header = "attachment; filename=\"";
+  header += basenameOf(path.c_str());
+  header += '"';
+  server->sendHeader("Content-Disposition", header.c_str());
   server->setContentLength(file.fileSize());
   server->send(200, "application/octet-stream", "");
   server->client().setNoDelay(true);
@@ -284,9 +292,7 @@ void FileTransferServer::handleUploadStart() {
     LOG_ERR("XFER", "Upload missing X-File-Name header");
     return;
   }
-  char full[256];
-  joinPath(full, sizeof(full), dir.empty() ? "/" : dir.c_str(), name.c_str());
-  upload.destPath = full;
+  upload.destPath = joinPath(dir.empty() ? "/" : dir.c_str(), name.c_str());
   if (!Storage.openFileForWrite("XFER", upload.destPath.c_str(), upload.file)) {
     LOG_ERR("XFER", "Failed to create %s", upload.destPath.c_str());
     return;
@@ -345,9 +351,9 @@ void FileTransferServer::handleUploadAbort() {
 
 void FileTransferServer::sendUploadResponse() const {
   if (upload.success) {
-    char msg[300];
-    snprintf(msg, sizeof(msg), "File uploaded successfully: %s", basenameOf(upload.destPath.c_str()));
-    server->send(200, "text/plain", msg);
+    std::string msg = "File uploaded successfully: ";
+    msg += basenameOf(upload.destPath.c_str());
+    server->send(200, "text/plain", msg.c_str());
   } else {
     server->send(500, "text/plain", "Upload failed");
   }
@@ -360,9 +366,8 @@ void FileTransferServer::handleMkdir() const {
   }
   const std::string parent = server->hasArg("path") ? server->arg("path").c_str() : "/";
   const std::string name = server->arg("name").c_str();
-  char full[256];
-  joinPath(full, sizeof(full), parent.c_str(), name.c_str());
-  if (Storage.mkdir(full)) {
+  const std::string full = joinPath(parent.c_str(), name.c_str());
+  if (Storage.mkdir(full.c_str())) {
     server->send(200, "text/plain", "OK");
   } else {
     server->send(500, "text/plain", "Could not create folder");
@@ -380,11 +385,9 @@ void FileTransferServer::handleRename() const {
     server->send(403, "text/plain", "Protected file");
     return;
   }
-  char dir[256];
-  dirnameOf(dir, sizeof(dir), oldPath.c_str());
-  char newPath[256];
-  joinPath(newPath, sizeof(newPath), dir, newName.c_str());
-  if (Storage.rename(oldPath.c_str(), newPath)) {
+  const std::string dir = dirnameOf(oldPath.c_str());
+  const std::string newPath = joinPath(dir.c_str(), newName.c_str());
+  if (Storage.rename(oldPath.c_str(), newPath.c_str())) {
     server->send(200, "text/plain", "OK");
   } else {
     server->send(500, "text/plain", "Rename failed");
@@ -402,9 +405,8 @@ void FileTransferServer::handleMove() const {
     server->send(403, "text/plain", "Protected file");
     return;
   }
-  char newPath[256];
-  joinPath(newPath, sizeof(newPath), dest.c_str(), basenameOf(oldPath.c_str()));
-  if (Storage.rename(oldPath.c_str(), newPath)) {
+  const std::string newPath = joinPath(dest.c_str(), basenameOf(oldPath.c_str()));
+  if (Storage.rename(oldPath.c_str(), newPath.c_str())) {
     server->send(200, "text/plain", "OK");
   } else {
     server->send(500, "text/plain", "Move failed");
