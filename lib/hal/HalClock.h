@@ -23,9 +23,13 @@ class HalClock {
   // True if an RTC is present on this device
   bool isAvailable() const { return _available; }
 
-  // Get current hour (0-23) and minute (0-59).
+  // Get current hour (0-23) and minute (0-59) in UTC (RTC time).
   // Returns false if RTC is not available.
   bool getTime(uint8_t& hour, uint8_t& minute) const;
+
+  // Like getTime(), with a UTC offset applied. Offset encoding matches
+  // formatTime(): 48 = UTC+0, 0 = UTC-12, 104 = UTC+14, in 15-minute steps.
+  bool getLocalTime(uint8_t& hour, uint8_t& minute, uint8_t utcOffsetQuarterHoursBiased = 48) const;
 
   // Format time into a caller-provided buffer.
   // 24h mode produces "HH:MM" (needs >=6 bytes); 12h mode produces "H:MM AM"/"HH:MM PM" (needs >=9 bytes).

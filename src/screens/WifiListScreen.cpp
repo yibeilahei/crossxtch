@@ -9,6 +9,7 @@
 
 #include "core/UiList.h"
 #include "core/fontIds.h"
+#include "network/ClockSync.h"
 #include "network/WifiCredentialStore.h"
 #include "network/WifiSession.h"
 #include "screens/FileTransferScreen.h"
@@ -147,6 +148,8 @@ void WifiListScreen::goToFileTransfer() {
     wifiCredentials.addOrUpdate(pendingSsid.c_str(), enteredPassword.c_str());
   }
   wifiCredentials.setLastConnected(pendingSsid.c_str());
+  ClockSync::onWifiConnected();
+
   auto transfer = makeUniqueNoThrow<FileTransferScreen>(gfx, input, pendingSsid);
   if (!transfer) {
     LOG_ERR("WIFI", "OOM: file transfer");

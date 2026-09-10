@@ -21,22 +21,31 @@ void Settings::load() {
             static_cast<unsigned>(sizeof(loaded)), static_cast<unsigned long>(MAGIC), kMinVersion, VERSION);
     return;
   }
-  if (loaded.version < VERSION) {
+  if (loaded.version < 4) {
     loaded.trueSleepMinutes = 0;
-    loaded.version = VERSION;
   }
+  if (loaded.version < 5) {
+    loaded.clockHasBeenSynced = 0;
+  }
+  if (loaded.version < 6) {
+    loaded.clockUtcOffsetQ = 48;
+  }
+  loaded.version = VERSION;
   *this = loaded;
   lastBookPath[sizeof(lastBookPath) - 1] = '\0';
   if (sleepTimeoutSeconds != 0 && sleepTimeoutSeconds != 30 && sleepTimeoutSeconds != 45 &&
       sleepTimeoutSeconds != 60) {
     sleepTimeoutSeconds = 60;
   }
-  if (trueSleepMinutes != 0 && trueSleepMinutes != 10 && trueSleepMinutes != 20 &&
-      trueSleepMinutes != 30) {
+  if (trueSleepMinutes != 0 && trueSleepMinutes != 10 && trueSleepMinutes != 20 && trueSleepMinutes != 30) {
     trueSleepMinutes = 10;
   }
-  LOG_INF("SET", "Loaded light=%u sec sleep=%u min refresh=%u night=%u tilt=%u last='%s'", sleepTimeoutSeconds,
-          trueSleepMinutes, refreshEveryNPages, nightMode, tiltPageTurn, lastBookPath);
+  if (clockUtcOffsetQ > 104) {
+    clockUtcOffsetQ = 48;
+  }
+  LOG_INF("SET", "Loaded light=%u sec sleep=%u min refresh=%u night=%u tilt=%u clock=%u tzq=%u last='%s'",
+          sleepTimeoutSeconds, trueSleepMinutes, refreshEveryNPages, nightMode, tiltPageTurn, clockHasBeenSynced,
+          clockUtcOffsetQ, lastBookPath);
 }
 
 void Settings::save() const {

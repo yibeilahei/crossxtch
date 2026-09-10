@@ -1,15 +1,18 @@
 #include "HomeScreen.h"
 
 #include <Gfx.h>
+#include <HalClock.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <Memory.h>
 
 #include <cstdio>
 
 #include "core/Settings.h"
 #include "core/UiList.h"
 #include "core/fontIds.h"
+#include "screens/ClockScreen.h"
 
 void HomeScreen::refreshMenu() {
   const bool hasContinue = settings.lastBookPath[0] != '\0' && Storage.exists(settings.lastBookPath);
@@ -32,6 +35,20 @@ void HomeScreen::onResume() {
 }
 
 void HomeScreen::loop() {
+  if (input.wasReleased(MappedInput::Button::Back)) {
+    auto clock = makeUniqueNoThrow<ClockScreen>(gfx, input);
+    if (!clock) {
+      LOG_ERR("HOME", "OOM: clock");
+      return;
+    }
+    push(std::move(clock));
+    return;
+  }
+  uint8_t hour = 0;
+  uint8_t minute = 0;
+  if (halClock.getLocalTime(hour, minute, settings.clockUtcOffsetQ) && minute != shownMinute) {
+    requestUpdate();
+  }
   if (ui::applyDelta(index, input.consumeNavigationDelta(), itemCount)) {
     requestUpdate();
   } else if (input.wasReleased(MappedInput::Button::Confirm)) {
@@ -56,6 +73,15 @@ void HomeScreen::loop() {
 
 void HomeScreen::render() {
   gfx.clear(false);
+
+  char clock[8];
+  uint8_t hour = 0;
+  uint8_t minute = 0;
+  if (halClock.getLocalTime(hour, minute, settings.clockUtcOffsetQ)) {
+    snprintf(clock, sizeof(clock), "%02u:%02u", hour, minute);
+    gfx.drawCenteredText(FONT_UI_BOLD, 8, clock);
+    shownMinute = minute;
+  }
 
   char bat[16];
   snprintf(bat, sizeof(bat), "%u%%", static_cast<unsigned>(powerManager.getBatteryPercentage()));
