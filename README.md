@@ -1,4 +1,4 @@
-# lazahata
+# crossxtch
 
 XTCH reader for the Xteink X3 and X4. Books are `.xtch` files on the SD card: pre-rendered 2-bit page bitmaps. This firmware blits them. It does not lay out text, scale pages, or read `.xtc`.
 
@@ -24,7 +24,7 @@ reference/            CrossPoint submodule (lookup only)
 freeink-sdk/          display and board support
 ```
 
-Settings and per-book progress live in `/.lazahata` on the SD card.
+Settings and per-book progress live in `/.crossxtch` on the SD card.
 Boot and runtime logs go to the Serial console only (no SD log file).
 
 Firmware update from SD (same idea as CrossPoint):
@@ -47,14 +47,14 @@ pio device monitor
 
 ## Release
 
-Bump `[lazahata] version` in `platformio.ini` to match the tag, push `develop`, then:
+Bump `[crossxtch] version` in `platformio.ini` to match the tag, push `develop`, then:
 
 ```bash
 git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
 ```
 
-GitHub Actions builds `lazahata-x3.bin` and `lazahata-x4.bin` and attaches them to a GitHub Release for that tag.
+GitHub Actions builds `crossxtch-x3.bin` and `crossxtch-x4.bin` and attaches them to a GitHub Release for that tag.
 
 Optional `platformio.local.ini` for a local upload port (gitignored).
 

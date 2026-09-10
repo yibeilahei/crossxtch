@@ -11,8 +11,8 @@
 #include "core/UiList.h"
 #include "core/fontIds.h"
 
-#ifndef LAZAHATA_VERSION
-#define LAZAHATA_VERSION "dev"
+#ifndef CROSSXTCH_VERSION
+#define CROSSXTCH_VERSION "dev"
 #endif
 
 namespace {
@@ -180,6 +180,6 @@ void SettingsScreen::render() {
     ui::drawMenuRow(gfx, startY + i * rowH, rowH, labels[i], i == index);
   }
 
-  gfx.drawCenteredText(FONT_UI, gfx.height() - 40, "lazahata " LAZAHATA_VERSION);
+  gfx.drawCenteredText(FONT_UI, gfx.height() - 40, "crossxtch " CROSSXTCH_VERSION);
   presentUi();
 }

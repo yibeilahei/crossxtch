@@ -6,8 +6,8 @@ struct Settings {
   static constexpr uint32_t MAGIC = 0x48585443;  // "HXTC"
   static constexpr uint16_t VERSION = 4;
   static constexpr uint16_t kMinVersion = 3;
-  static constexpr const char* kDir = "/.lazahata";
-  static constexpr const char* kPath = "/.lazahata/settings.bin";
+  static constexpr const char* kDir = "/.crossxtch";
+  static constexpr const char* kPath = "/.crossxtch/settings.bin";
 
   uint32_t magic = MAGIC;
   uint16_t version = VERSION;

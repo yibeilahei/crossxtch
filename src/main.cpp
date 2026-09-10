@@ -21,8 +21,8 @@
 #include "core/fontIds.h"
 #include "network/WifiCredentialStore.h"
 
-#ifndef LAZAHATA_VERSION
-#define LAZAHATA_VERSION "dev"
+#ifndef CROSSXTCH_VERSION
+#define CROSSXTCH_VERSION "dev"
 #endif
 
 Gfx gfx(display);
@@ -75,7 +75,7 @@ void setup() {
   halClock.begin();
 
   const auto wakeupReason = gpio.getWakeupReason();
-  LOG_INF("MAIN", "lazahata " LAZAHATA_VERSION " board=%s gpio=%s wake=%s bat=%u%% panic=%d",
+  LOG_INF("MAIN", "crossxtch " CROSSXTCH_VERSION " board=%s gpio=%s wake=%s bat=%u%% panic=%d",
           BoardConfig::ACTIVE.name, gpio.deviceIsX3() ? "x3" : "x4", wakeupName(wakeupReason),
           static_cast<unsigned>(powerManager.getBatteryPercentage()), HalSystem::isRebootFromPanic() ? 1 : 0);
 

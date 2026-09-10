@@ -10,8 +10,8 @@
 #include "esp_private/esp_system_attr.h"
 #include "esp_private/panic_internal.h"
 
-#ifndef LAZAHATA_VERSION
-#define LAZAHATA_VERSION "dev"
+#ifndef CROSSXTCH_VERSION
+#define CROSSXTCH_VERSION "dev"
 #endif
 
 #define MAX_PANIC_STACK_DEPTH 32
@@ -137,7 +137,7 @@ std::string getPanicInfo(bool full) {
   } else {
     std::string info;
 
-    info += "lazahata version: " LAZAHATA_VERSION;
+    info += "crossxtch version: " CROSSXTCH_VERSION;
     info += "\n\nPanic reason: " + std::string(panicMessage);
     info += "\n\nLast logs:\n" + getLastLogs();
     info += "\n\nStack memory:\n";

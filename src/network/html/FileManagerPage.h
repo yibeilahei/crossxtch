@@ -9,7 +9,7 @@ static const char FILE_MANAGER_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0a0a0a">
-<title>lazahata file transfer</title>
+<title>crossxtch file transfer</title>
 <style>
 :root {
   --bg: #0a0a0a;
@@ -200,7 +200,7 @@ footer {
 <body>
 <div class="wrap">
   <div class="eyebrow">file transfer</div>
-  <h1>lazahata</h1>
+  <h1>crossxtch</h1>
   <nav id="path"></nav>
   <div id="dropZone">
     <div class="drop-kicker">upload</div>
@@ -219,7 +219,7 @@ footer {
     <div id="list"></div>
   </section>
   <div id="status"></div>
-  <footer id="foot">lazahata</footer>
+  <footer id="foot">crossxtch</footer>
 </div>
 <script>
 let path = "/";
@@ -477,7 +477,7 @@ document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("drop", e => e.preventDefault());
 
 fetch("/api/status").then(r => r.json()).then(s => {
-  const bits = ["lazahata"];
+  const bits = ["crossxtch"];
   if (s.version) bits.push(s.version);
   if (s.ssid) bits.push(s.ssid);
   if (s.ip) bits.push(s.ip);

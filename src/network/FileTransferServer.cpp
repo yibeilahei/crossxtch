@@ -16,8 +16,8 @@
 
 #include "network/html/FileManagerPage.h"
 
-#ifndef LAZAHATA_VERSION
-#define LAZAHATA_VERSION "dev"
+#ifndef CROSSXTCH_VERSION
+#define CROSSXTCH_VERSION "dev"
 #endif
 
 namespace {
@@ -179,7 +179,7 @@ void FileTransferServer::handleRoot() const { server->send_P(200, "text/html", F
 void FileTransferServer::handleStatus() const {
   char json[192];
   snprintf(json, sizeof(json),
-           "{\"version\":\"" LAZAHATA_VERSION "\",\"ip\":\"%s\",\"ssid\":\"%s\",\"freeHeap\":%lu,\"uptime\":%lu}",
+           "{\"version\":\"" CROSSXTCH_VERSION "\",\"ip\":\"%s\",\"ssid\":\"%s\",\"freeHeap\":%lu,\"uptime\":%lu}",
            WiFi.localIP().toString().c_str(), WiFi.SSID().c_str(), static_cast<unsigned long>(ESP.getFreeHeap()),
            static_cast<unsigned long>(millis() / 1000));
   server->send(200, "application/json", json);
