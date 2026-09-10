@@ -2,7 +2,6 @@
 
 #include <Gfx.h>
 #include <HalClock.h>
-#include <HalDisplay.h>
 
 #include <algorithm>
 
@@ -128,6 +127,5 @@ void ClockScreen::render() {
   x += digitW + gap;
   drawDigit(gfx, x, y0, digitW, digitH, thick, d3);
 
-  // Minute updates are rare; use a cleaner refresh than the UI FAST path.
-  gfx.present(HalDisplay::HALF_REFRESH);
+  presentUi();
 }
