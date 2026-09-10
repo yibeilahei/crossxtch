@@ -4,6 +4,7 @@
 
 class SettingsScreen final : public Screen {
   int index = 0;
+  uint8_t shownMinute = 255;
 
  public:
   SettingsScreen(Gfx& gfx, MappedInput& input) : Screen("Settings", gfx, input) {}

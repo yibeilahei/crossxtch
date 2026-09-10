@@ -1,13 +1,17 @@
 #include "BrowserScreen.h"
 
 #include <Gfx.h>
+#include <HalClock.h>
+#include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 
+#include "core/Settings.h"
 #include "core/UiList.h"
 #include "core/fontIds.h"
 #include "screens/UpdateScreen.h"
@@ -136,6 +140,11 @@ void BrowserScreen::loop() {
     goUp();
     return;
   }
+  uint8_t hour = 0;
+  uint8_t minute = 0;
+  if (halClock.getLocalTime(hour, minute, settings.clockUtcOffsetQ) && minute != shownMinute) {
+    requestUpdate();
+  }
   const int count = static_cast<int>(entries.size());
   if (ui::applyDelta(index, input.consumeNavigationDelta(), count)) {
     requestUpdate();
@@ -146,10 +155,25 @@ void BrowserScreen::loop() {
 
 void BrowserScreen::render() {
   gfx.clear(false);
-  gfx.drawText(FONT_UI_BOLD, 12, 8, path.c_str());
+
+  char clock[8];
+  uint8_t hour = 0;
+  uint8_t minute = 0;
+  if (halClock.getLocalTime(hour, minute, settings.clockUtcOffsetQ)) {
+    snprintf(clock, sizeof(clock), "%02u:%02u", hour, minute);
+    gfx.drawCenteredText(FONT_UI_BOLD, 8, clock);
+    shownMinute = minute;
+  }
+
+  char bat[16];
+  snprintf(bat, sizeof(bat), "%u%%", static_cast<unsigned>(powerManager.getBatteryPercentage()));
+  gfx.drawText(FONT_UI, gfx.width() - gfx.textWidth(FONT_UI, bat) - 12, 8, bat);
+
+  const int pathY = 8 + gfx.lineHeight(FONT_UI_BOLD) + 6;
+  gfx.drawText(FONT_UI_BOLD, 12, pathY, path.c_str());
 
   const int rowH = gfx.lineHeight(FONT_UI) + 8;
-  const int top = 40;
+  const int top = pathY + gfx.lineHeight(FONT_UI_BOLD) + 8;
   const int bottomPad = mode == Mode::Firmware ? 52 : 24;
   const int rows = (gfx.height() - top - bottomPad) / rowH;
   ui::followWindow(window, index, rows);

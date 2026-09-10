@@ -14,6 +14,7 @@ class BrowserScreen final : public Screen {
   std::vector<std::string> entries;
   int index = 0;
   int window = 0;
+  uint8_t shownMinute = 255;
   Mode mode = Mode::Books;
 
   void load();

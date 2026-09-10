@@ -77,7 +77,9 @@ void drawColon(Gfx& gfx, const int x, const int y, const int h, const int t) {
 }  // namespace
 
 void ClockScreen::loop() {
-  if (input.wasReleased(MappedInput::Button::Back)) {
+  // Any key, including taps that landed during a blocking refresh.
+  if (input.wasAnyReleased() || input.wasReleased(MappedInput::Button::Back) ||
+      input.wasReleased(MappedInput::Button::Confirm) || input.consumeNavigationDelta() != 0) {
     finish();
     return;
   }
