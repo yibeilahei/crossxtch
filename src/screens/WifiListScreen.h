@@ -7,7 +7,7 @@
 #include "network/WifiManager.h"
 
 class WifiListScreen final : public Screen {
-  enum class State { Scanning, NetworkList, Connecting, Failed };
+  enum class State { Scanning, NetworkList, Connecting, Failed, ClearPassword };
 
   State state = State::Scanning;
   std::vector<WifiManager::Network> networks;
@@ -15,9 +15,16 @@ class WifiListScreen final : public Screen {
   int window = 0;
   std::string pendingSsid;
   std::string enteredPassword;
+  bool usedSavedPassword = false;
+  bool autoConnecting = false;
+  bool skipAutoJoin = false;
 
-  void selectNetwork();
+  void selectNetwork(bool fromAutoJoin = false);
+  bool tryAutoJoin();
   void startConnecting(const char* password);
+  bool promptPassword();
+  void showNetworkList();
+  void onConnectFailed();
   void goToFileTransfer();
 
  public:

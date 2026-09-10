@@ -8,6 +8,7 @@
 WifiManager wifiManager;
 
 void WifiManager::startScan() {
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   LOG_INF("WIFI", "Scan starting");
   WiFi.scanNetworks(true /* async */);
@@ -52,8 +53,10 @@ bool WifiManager::scanComplete(std::vector<Network>& out) {
   return true;
 }
 
-void WifiManager::connect(const char* ssid, const char* password) {
+void WifiManager::connect(const char* ssid, const char* password, const unsigned long timeoutMs) {
   LOG_INF("WIFI", "Connecting to '%s'", ssid ? ssid : "");
+  WiFi.persistent(false);  // Credentials live in WifiCredentialStore, not NVS.
+  WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
   // Abort any prior connect attempt first. Without this, retrying right
   // after a timeout (the underlying esp-idf driver may still be mid-connect)
@@ -66,7 +69,10 @@ void WifiManager::connect(const char* ssid, const char* password) {
     WiFi.begin(ssid);
   }
   connectStartMs = millis();
+  connectTimeoutMs = timeoutMs == 0 ? kConnectTimeoutMs : timeoutMs;
 }
+
+void WifiManager::abortConnect() { WiFi.disconnect(); }
 
 WifiManager::ConnectState WifiManager::pollConnect() {
   const wl_status_t status = WiFi.status();
@@ -78,7 +84,13 @@ WifiManager::ConnectState WifiManager::pollConnect() {
     LOG_INF("WIFI", "Connected, ip=%s", WiFi.localIP().toString().c_str());
     return ConnectState::Connected;
   }
-  if (millis() - connectStartMs > kConnectTimeoutMs) {
+  // Wrong password typically lands here instead of waiting out the timeout.
+  if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+    LOG_ERR("WIFI", "Connect failed (status=%d)", static_cast<int>(status));
+    WiFi.disconnect();
+    return ConnectState::Failed;
+  }
+  if (millis() - connectStartMs > connectTimeoutMs) {
     LOG_ERR("WIFI", "Connect timed out (status=%d)", static_cast<int>(status));
     // Abort the stuck attempt so a subsequent connect() doesn't immediately
     // fail with "sta is connecting, cannot set config".
