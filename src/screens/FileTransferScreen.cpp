@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "core/fontIds.h"
+#include "network/ClockSync.h"
 #include "network/WifiSession.h"
 
 void FileTransferScreen::onEnter() {
@@ -27,6 +28,12 @@ void FileTransferScreen::onExit() {
 void FileTransferScreen::loop() {
   if (started) {
     server.handleClient();
+  }
+  // After the URL is on screen and HTTP has had a tick, sync RTC. Do not run
+  // this in goToFileTransfer() — NTP/timezone blocked the file manager.
+  if (started && painted && !clockTried) {
+    clockTried = true;
+    ClockSync::onWifiConnected();
   }
   if (input.wasReleased(MappedInput::Button::Back)) {
     finish();
@@ -54,4 +61,5 @@ void FileTransferScreen::render() {
 
   gfx.drawCenteredText(FONT_UI, gfx.height() - 40, "Back to stop");
   presentUi();
+  painted = true;
 }

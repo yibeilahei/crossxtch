@@ -105,6 +105,7 @@ void ClockSync::onWifiConnected() {
   }
 
   bool dirty = false;
+  const bool needTimezone = !settings.clockHasBeenSynced;
   if (halClock.isAvailable()) {
     LOG_INF("CLK", "Syncing clock from NTP");
     if (halClock.syncFromNTP() && !settings.clockHasBeenSynced) {
@@ -113,10 +114,15 @@ void ClockSync::onWifiConnected() {
     }
   }
 
-  uint8_t offsetQ = 0;
-  if (fetchTimezoneOffset(offsetQ) && offsetQ != settings.clockUtcOffsetQ) {
-    settings.clockUtcOffsetQ = offsetQ;
-    dirty = true;
+  // Timezone HTTP is slow (~2s) and rarely changes. First connect looks it
+  // up; later connects (or a manual set from the file-manager page) only
+  // correct RTC drift via NTP.
+  if (needTimezone) {
+    uint8_t offsetQ = 0;
+    if (fetchTimezoneOffset(offsetQ) && offsetQ != settings.clockUtcOffsetQ) {
+      settings.clockUtcOffsetQ = offsetQ;
+      dirty = true;
+    }
   }
   if (dirty) {
     settings.save();

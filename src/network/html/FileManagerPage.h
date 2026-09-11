@@ -181,6 +181,23 @@ button.danger:hover { color: var(--bad); border-color: var(--bad); }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .actions .btn, .actions button { padding: 6px 10px; font-size: 10px; }
 .empty { padding: 36px 16px; text-align: center; color: var(--dim); font-size: 13px; }
+.setting {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+}
+select {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--lift);
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  padding: 8px 12px;
+  max-width: 46vw;
+}
 #status { min-height: 20px; margin-top: 14px; font-size: 13px; color: var(--mute); }
 #status.ok { color: var(--good); }
 #status.bad { color: var(--bad); }
@@ -217,6 +234,16 @@ footer {
   <section class="panel">
     <div class="panel-head">Files</div>
     <div id="list"></div>
+  </section>
+  <section class="panel" style="margin-top:16px">
+    <div class="panel-head">Device</div>
+    <div class="setting">
+      <div class="meta">
+        <div class="name">Timezone</div>
+        <div class="sub">UTC offset for the clock</div>
+      </div>
+      <select id="tzSelect"></select>
+    </div>
   </section>
   <div id="status"></div>
   <footer id="foot">crossxtch</footer>
@@ -496,12 +523,40 @@ dropZone.addEventListener("drop", e => {
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("drop", e => e.preventDefault());
 
+function tzLabel(q) {
+  const mins = (q - 48) * 15;
+  const sign = mins < 0 ? "-" : "+";
+  const abs = Math.abs(mins);
+  return "UTC" + sign + Math.floor(abs / 60) + ":" + String(abs % 60).padStart(2, "0");
+}
+
+const tzSelect = document.getElementById("tzSelect");
+for (let q = 0; q <= 104; q++) {
+  const opt = document.createElement("option");
+  opt.value = q;
+  opt.textContent = tzLabel(q);
+  tzSelect.appendChild(opt);
+}
+tzSelect.onchange = () => {
+  fetch("/api/timezone", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "offsetQ=" + encodeURIComponent(tzSelect.value)
+  })
+    .then(r => {
+      if (!r.ok) throw new Error("save failed");
+      status("Timezone set to " + tzLabel(+tzSelect.value), "ok");
+    })
+    .catch(e => status("Error: " + e, "bad"));
+};
+
 fetch("/api/status").then(r => r.json()).then(s => {
   const bits = ["crossxtch"];
   if (s.version) bits.push(s.version);
   if (s.ssid) bits.push(s.ssid);
   if (s.ip) bits.push(s.ip);
   document.getElementById("foot").textContent = bits.join("  ·  ");
+  if (s.utcOffsetQ !== undefined) tzSelect.value = String(s.utcOffsetQ);
 }).catch(() => {});
 
 load();

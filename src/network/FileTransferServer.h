@@ -43,6 +43,7 @@ class FileTransferServer {
 
   void handleRoot() const;
   void handleStatus() const;
+  void handleTimezone();
   void handleFileList() const;
   void handleDownload() const;
   void handleMkdir() const;

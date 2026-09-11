@@ -14,6 +14,7 @@
 #include <cstring>
 #include <new>
 
+#include "core/Settings.h"
 #include "network/html/FileManagerPage.h"
 
 #ifndef CROSSXTCH_VERSION
@@ -135,6 +136,7 @@ bool FileTransferServer::begin() {
 
   server->on("/", HTTP_GET, [this]() { handleRoot(); });
   server->on("/api/status", HTTP_GET, [this]() { handleStatus(); });
+  server->on("/api/timezone", HTTP_POST, [this]() { handleTimezone(); });
   server->on("/api/files", HTTP_GET, [this]() { handleFileList(); });
   server->on("/download", HTTP_GET, [this]() { handleDownload(); });
   server->on("/mkdir", HTTP_POST, [this]() { handleMkdir(); });
@@ -190,12 +192,33 @@ void FileTransferServer::handleClient() {
 void FileTransferServer::handleRoot() const { server->send_P(200, "text/html", FILE_MANAGER_PAGE); }
 
 void FileTransferServer::handleStatus() const {
-  char json[192];
+  char json[256];
   snprintf(json, sizeof(json),
-           "{\"version\":\"" CROSSXTCH_VERSION "\",\"ip\":\"%s\",\"ssid\":\"%s\",\"freeHeap\":%lu,\"uptime\":%lu}",
+           "{\"version\":\"" CROSSXTCH_VERSION
+           "\",\"ip\":\"%s\",\"ssid\":\"%s\",\"freeHeap\":%lu,\"uptime\":%lu,\"utcOffsetQ\":%u}",
            WiFi.localIP().toString().c_str(), WiFi.SSID().c_str(), static_cast<unsigned long>(ESP.getFreeHeap()),
-           static_cast<unsigned long>(millis() / 1000));
+           static_cast<unsigned long>(millis() / 1000), settings.clockUtcOffsetQ);
   server->send(200, "application/json", json);
+}
+
+void FileTransferServer::handleTimezone() {
+  if (!server->hasArg("offsetQ")) {
+    server->send(400, "text/plain", "Missing offsetQ");
+    return;
+  }
+  const int q = atoi(server->arg("offsetQ").c_str());
+  if (q < 0 || q > 104) {
+    server->send(400, "text/plain", "offsetQ must be 0–104 (UTC−12 to UTC+14, 15 min steps)");
+    return;
+  }
+  settings.clockUtcOffsetQ = static_cast<uint8_t>(q);
+  // Manual choice wins over the one-shot HTTP timezone lookup.
+  if (!settings.clockHasBeenSynced) {
+    settings.clockHasBeenSynced = 1;
+  }
+  settings.save();
+  LOG_INF("XFER", "Timezone set to q=%d", q);
+  server->send(200, "text/plain", "OK");
 }
 
 void FileTransferServer::handleFileList() const {
