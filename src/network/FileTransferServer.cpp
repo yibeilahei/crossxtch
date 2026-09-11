@@ -64,6 +64,17 @@ bool isProtectedPath(const char* path) {
   const char* name = basenameOf(path);
   return name[0] == '.' || strcmp(name, "System Volume Information") == 0;
 }
+
+// WebServer::handleClient() sets a 5s socket timeout before parsing. That's
+// too tight for a book upload: a Wi-Fi hiccup or a blocking SD write on the
+// single-core C3 makes client.readBytes() return 0, the raw parser aborts,
+// and Chrome logs net::ERR_CONNECTION_RESET. 60s is per-chunk, not overall.
+constexpr uint32_t kUploadSocketTimeoutMs = 60000;
+
+void pumpNetwork() {
+  feedLoopWDT();
+  yield();
+}
 }  // namespace
 
 class FileTransferServer::RawUploadHandler : public RequestHandler {
@@ -110,11 +121,10 @@ bool FileTransferServer::begin() {
     return false;
   }
 
-  // The raw upload handler reads these directly (query-string args aren't
-  // parsed for raw-body requests, so path/name travel as headers instead;
-  // Content-Length doubles as the pre-allocation size hint).
-  static const char* kCollectedHeaders[] = {"Content-Length", "X-File-Path", "X-File-Name"};
-  server->collectHeaders(kCollectedHeaders, 3);
+  // Query-string args aren't parsed for raw-body requests; path/name travel
+  // as headers. Body size is WebServer::clientContentLength().
+  static const char* kCollectedHeaders[] = {"X-File-Path", "X-File-Name"};
+  server->collectHeaders(kCollectedHeaders, 2);
 
   uploadHandler = new (std::nothrow) RawUploadHandler(*this);
   if (!uploadHandler) {
@@ -135,6 +145,9 @@ bool FileTransferServer::begin() {
 
   server->begin();
   running = true;
+
+  upload.writeBuffer = makeUniqueNoThrow<uint8_t[]>(UploadState::kWriteBufferSize);
+  upload.writeBufferPos = 0;
 
   mdnsHostname = gpio.deviceIsX3() ? "x3" : "x4";
   mdnsStarted = MDNS.begin(mdnsHostname.c_str());
@@ -263,29 +276,33 @@ void FileTransferServer::handleDownload() const {
   }
 }
 
-void FileTransferServer::flushUploadBuffer() {
-  if (upload.bufferPos == 0 || !upload.file) {
+void FileTransferServer::writeUploadBytes(const uint8_t* data, size_t len) {
+  if (!upload.file || !len) {
     return;
   }
-  const size_t written = upload.file.write(upload.buffer.data(), upload.bufferPos);
-  if (written != upload.bufferPos) {
-    LOG_ERR("XFER", "Short upload write (%u of %u)", static_cast<unsigned>(written),
-            static_cast<unsigned>(upload.bufferPos));
+  const size_t written = upload.file.write(data, len);
+  feedLoopWDT();
+  if (written != len) {
+    LOG_ERR("XFER", "Short upload write (%u of %u)", static_cast<unsigned>(written), static_cast<unsigned>(len));
     upload.success = false;
   }
-  upload.bufferPos = 0;
+}
+
+void FileTransferServer::flushWriteBuffer() {
+  if (upload.writeBufferPos == 0 || !upload.writeBuffer) {
+    return;
+  }
+  writeUploadBytes(upload.writeBuffer.get(), upload.writeBufferPos);
+  upload.writeBufferPos = 0;
 }
 
 void FileTransferServer::handleUploadStart() {
   upload.success = false;
-  upload.bufferPos = 0;
   upload.preallocatedSize = 0;
-  // Uploads are large sequential writes; Nagle's algorithm just adds
-  // latency here, and delayed-ACK has no small-write coalescing to help.
+  upload.writeBufferPos = 0;
   server->client().setNoDelay(true);
+  server->client().setTimeout(kUploadSocketTimeoutMs);
 
-  // Query-string args aren't parsed for raw-body requests, so the browser
-  // sends the destination folder/filename as headers instead.
   const std::string dir = WebServer::urlDecode(server->header("X-File-Path")).c_str();
   const std::string name = WebServer::urlDecode(server->header("X-File-Name")).c_str();
   if (name.empty()) {
@@ -293,55 +310,64 @@ void FileTransferServer::handleUploadStart() {
     return;
   }
   upload.destPath = joinPath(dir.empty() ? "/" : dir.c_str(), name.c_str());
+  // FAT open/preAllocate can block; yield so lwIP can ACK bytes already in flight.
+  pumpNetwork();
   if (!Storage.openFileForWrite("XFER", upload.destPath.c_str(), upload.file)) {
     LOG_ERR("XFER", "Failed to create %s", upload.destPath.c_str());
     return;
   }
   upload.success = true;
-  if (upload.buffer.size() < UploadState::kBufferSize) {
-    upload.buffer.resize(UploadState::kBufferSize);
-  }
 
-  // Reserve one contiguous extent up front using the client's declared
-  // body size as an (over-)estimate: this skips per-cluster FAT chain
-  // updates during the writes below. It's shrunk back to the real size
-  // with truncate() once we know how many bytes actually landed.
-  const std::string contentLength = server->header("Content-Length").c_str();
-  if (!contentLength.empty()) {
-    const uint64_t hint = strtoull(contentLength.c_str(), nullptr, 10);
-    if (hint > 0 && upload.file.preAllocate(hint)) {
-      upload.preallocatedSize = hint;
+  const int contentLength = server->clientContentLength();
+  if (contentLength > 0) {
+    if (upload.file.preAllocate(static_cast<uint64_t>(contentLength))) {
+      upload.preallocatedSize = static_cast<uint64_t>(contentLength);
+      LOG_INF("XFER", "preAllocate %d bytes", contentLength);
+    } else {
+      LOG_ERR("XFER", "preAllocate %d failed", contentLength);
     }
   }
+  pumpNetwork();
 }
 
 void FileTransferServer::handleUploadChunk(const uint8_t* data, size_t len) {
-  if (!upload.file) {
+  if (!upload.file || !len) {
+    return;
+  }
+  if (!upload.writeBuffer) {
+    writeUploadBytes(data, len);
     return;
   }
   size_t offset = 0;
   while (offset < len) {
-    const size_t space = UploadState::kBufferSize - upload.bufferPos;
+    const size_t space = UploadState::kWriteBufferSize - upload.writeBufferPos;
     const size_t chunk = std::min(space, len - offset);
-    memcpy(upload.buffer.data() + upload.bufferPos, data + offset, chunk);
-    upload.bufferPos += chunk;
+    memcpy(upload.writeBuffer.get() + upload.writeBufferPos, data + offset, chunk);
+    upload.writeBufferPos += chunk;
     offset += chunk;
-    if (upload.bufferPos == UploadState::kBufferSize) {
-      flushUploadBuffer();
+    if (upload.writeBufferPos == UploadState::kWriteBufferSize) {
+      flushWriteBuffer();
     }
   }
 }
 
 void FileTransferServer::handleUploadEnd(size_t totalBytes) {
-  flushUploadBuffer();
-  if (upload.preallocatedSize > totalBytes) {
-    upload.file.truncate(totalBytes);
+  if (upload.file) {
+    flushWriteBuffer();
+    if (upload.preallocatedSize > totalBytes) {
+      upload.file.truncate(totalBytes);
+    }
+    upload.file.flush();
+    upload.file.close();
+    upload.file = HalFile();
   }
+  pumpNetwork();
   LOG_INF("XFER", "Uploaded %s (%lu bytes)", upload.destPath.c_str(), static_cast<unsigned long>(totalBytes));
 }
 
 void FileTransferServer::handleUploadAbort() {
   upload.success = false;
+  upload.writeBufferPos = 0;
   upload.file = HalFile();  // close before removing the partial file
   if (!upload.destPath.empty()) {
     Storage.remove(upload.destPath.c_str());

@@ -224,6 +224,7 @@ footer {
 <script>
 let path = "/";
 let activeUpload = null;
+let retryTimer = null;
 const ICO_DIR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>';
 const ICO_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg>';
 
@@ -231,6 +232,21 @@ function status(msg, kind) {
   const el = document.getElementById("status");
   el.textContent = msg || "";
   el.className = kind || "";
+}
+
+function uploadBusy() { return activeUpload || retryTimer; }
+
+function resetUploadUi() {
+  activeUpload = null;
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  const dropZone = document.getElementById("dropZone");
+  document.getElementById("uploadProgress").style.display = "none";
+  document.getElementById("uploadBar").style.width = "0%";
+  document.getElementById("cancelUpload").style.display = "none";
+  dropZone.classList.remove("busy");
+  dropZone.querySelector(".drop-title").textContent = "Drop a file";
+  dropZone.querySelector(".drop-sub").textContent = "or click to browse";
+  document.getElementById("fileInput").value = "";
 }
 
 function formatSize(bytes) {
@@ -344,13 +360,13 @@ function load() {
     .catch(e => status("Error: " + e, "bad"));
 }
 
-function upload(file) {
+function upload(file, attempt) {
   if (!file) return;
   if (file.name.length > 255) {
     status("Filename too long (max 255 characters)", "bad");
     return;
   }
-  if (activeUpload) { status("Upload already in progress", "bad"); return; }
+  if (uploadBusy()) { status("Upload already in progress", "bad"); return; }
 
   const wrap = document.getElementById("uploadProgress");
   const bar = document.getElementById("uploadBar");
@@ -361,7 +377,7 @@ function upload(file) {
   cancelBtn.style.display = "inline-flex";
   dropZone.classList.add("busy");
   dropZone.querySelector(".drop-title").textContent = file.name;
-  dropZone.querySelector(".drop-sub").textContent = "sending to device";
+  dropZone.querySelector(".drop-sub").textContent = attempt ? "retrying" : "sending to device";
 
   let lastTime = performance.now();
   let lastLoaded = 0;
@@ -387,24 +403,23 @@ function upload(file) {
       status("Uploading  ·  " + formatSize(e.loaded) + "  ·  " + formatSize(speed) + "/s");
     }
   };
-  const resetDrop = () => {
-    activeUpload = null;
-    wrap.style.display = "none";
-    bar.style.width = "0%";
-    cancelBtn.style.display = "none";
-    dropZone.classList.remove("busy");
-    dropZone.querySelector(".drop-title").textContent = "Drop a file";
-    dropZone.querySelector(".drop-sub").textContent = "or click to browse";
-    document.getElementById("fileInput").value = "";
-  };
   xhr.onload = () => {
     const ok = xhr.status >= 200 && xhr.status < 300;
-    resetDrop();
+    resetUploadUi();
     status(xhr.responseText, ok ? "ok" : "bad");
     load();
   };
-  xhr.onerror = () => { resetDrop(); status("Upload failed", "bad"); };
-  xhr.onabort = () => { resetDrop(); status("Upload canceled"); load(); };
+  xhr.onerror = () => {
+    activeUpload = null;
+    if (!attempt) {
+      status("Connection dropped, retrying…");
+      retryTimer = setTimeout(() => { retryTimer = null; upload(file, 1); }, 500);
+      return;
+    }
+    resetUploadUi();
+    status("Upload failed", "bad");
+  };
+  xhr.onabort = () => { resetUploadUi(); status("Upload canceled"); load(); };
   xhr.open("POST", "/upload");
   xhr.setRequestHeader("Content-Type", "application/octet-stream");
   xhr.setRequestHeader("X-File-Path", encodeURIComponent(path));
@@ -414,6 +429,11 @@ function upload(file) {
 
 function cancelUpload() {
   if (activeUpload) activeUpload.abort();
+  else {
+    resetUploadUi();
+    status("Upload canceled");
+    load();
+  }
 }
 
 function mkdir() {
@@ -455,7 +475,7 @@ const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 
 dropZone.addEventListener("click", () => {
-  if (!activeUpload) fileInput.click();
+  if (!uploadBusy()) fileInput.click();
 });
 fileInput.addEventListener("change", () => {
   if (fileInput.files.length) upload(fileInput.files[0]);
@@ -463,7 +483,7 @@ fileInput.addEventListener("change", () => {
 ["dragenter", "dragover"].forEach(ev => {
   dropZone.addEventListener(ev, e => {
     e.preventDefault();
-    if (!activeUpload) dropZone.classList.add("dragover");
+    if (!uploadBusy()) dropZone.classList.add("dragover");
   });
 });
 dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));

@@ -4,7 +4,6 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 
 class WebServer;
 
@@ -30,20 +29,16 @@ class FileTransferServer {
   bool mdnsStarted = false;
   std::string mdnsHostname;
 
-  // Buffered multipart upload state, one upload at a time.
+  // One upload at a time. HTTP_RAW_BUFLEN (4 KB) is coalesced into a 16 KB
+  // SD write so we issue fewer SPI transactions per book.
   struct UploadState {
     HalFile file;
     std::string destPath;
     bool success = false;
-    uint64_t preallocatedSize = 0;  // 0 if preAllocate() wasn't used for this upload
-
-    // Batches small writes into larger SD card operations. 16KB trades a
-    // little more RAM for roughly a quarter the SD write()/mutex round-trips
-    // versus the original 4KB (see CrossPoint's CrossPointWebServer.h for the
-    // same buffering rationale, at a smaller size).
-    static constexpr size_t kBufferSize = 16384;
-    std::vector<uint8_t> buffer;
-    size_t bufferPos = 0;
+    uint64_t preallocatedSize = 0;
+    static constexpr size_t kWriteBufferSize = 16384;
+    std::unique_ptr<uint8_t[]> writeBuffer;
+    size_t writeBufferPos = 0;
   } upload;
 
   void handleRoot() const;
@@ -72,5 +67,6 @@ class FileTransferServer {
   void handleUploadEnd(size_t totalBytes);
   void handleUploadAbort();
   void sendUploadResponse() const;
-  void flushUploadBuffer();
+  void writeUploadBytes(const uint8_t* data, size_t len);
+  void flushWriteBuffer();
 };
