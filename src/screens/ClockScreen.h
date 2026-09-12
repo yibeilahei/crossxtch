@@ -9,5 +9,5 @@ class ClockScreen final : public Screen {
   ClockScreen(Gfx& gfx, MappedInput& input) : Screen("Clock", gfx, input) {}
   void loop() override;
   void render() override;
-  bool blocksSleep() const override { return true; }
+  bool isClock() const override { return true; }
 };

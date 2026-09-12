@@ -13,11 +13,9 @@ void noteUserActivity(HalGPIO& gpio);
 bool maybeSleep(HalGPIO& gpio, const Settings& settings);
 void idleDelay();
 
-// Short power-button press (released before the deep-sleep hold) toggles a
-// gyroscope lock so picking up the device cannot turn pages. Any other key
-// press clears the lock and is still handled normally. Idle timers: light
-// sleep → the same lock; true sleep → white page and power off. A long
-// power hold still deep-sleeps.
-bool tiltLocked();
-bool maybeToggleTiltLock(HalGPIO& gpio);
+// Short power-button press (released before the deep-sleep hold) toggles clock
+// mode: push ClockScreen, or fall through so ClockScreen pops on the same
+// release. Idle timers: clock mode → the same overlay; true sleep → white page
+// and power off. A long power hold still deep-sleeps.
+bool maybeEnterClock(HalGPIO& gpio);
 }  // namespace power

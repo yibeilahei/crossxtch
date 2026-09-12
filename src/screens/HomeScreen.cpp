@@ -5,14 +5,12 @@
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
-#include <Memory.h>
 
 #include <cstdio>
 
 #include "core/Settings.h"
 #include "core/UiList.h"
 #include "core/fontIds.h"
-#include "screens/ClockScreen.h"
 
 void HomeScreen::refreshMenu() {
   const bool hasContinue = settings.lastBookPath[0] != '\0' && Storage.exists(settings.lastBookPath);
@@ -36,12 +34,7 @@ void HomeScreen::onResume() {
 
 void HomeScreen::loop() {
   if (input.wasReleased(MappedInput::Button::Back)) {
-    auto clock = makeUniqueNoThrow<ClockScreen>(gfx, input);
-    if (!clock) {
-      LOG_ERR("HOME", "OOM: clock");
-      return;
-    }
-    push(std::move(clock));
+    goToClock();
     return;
   }
   uint8_t hour = 0;

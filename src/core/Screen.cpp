@@ -28,3 +28,4 @@ void Screen::goToBrowser() { screenManager.goToBrowser(); }
 void Screen::goToSettings() { screenManager.goToSettings(); }
 void Screen::goToFirmwareUpdate(const bool recovery) { screenManager.goToFirmwareUpdate(recovery); }
 void Screen::goToWifiFileTransfer() { screenManager.goToWifiFileTransfer(); }
+void Screen::goToClock() { screenManager.goToClock(); }

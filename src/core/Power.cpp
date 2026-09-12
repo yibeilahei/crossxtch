@@ -15,12 +15,8 @@ unsigned long allowSleepAt = 0;
 unsigned long lastActivity = 0;
 bool wakePowerReleasePending = false;
 bool powerReleasedSinceWake = false;
-bool tiltLock = false;
-// After unlocking with the power button, ignore that same press's release
-// so it does not immediately lock again.
-bool suppressNextPowerShortPress = false;
-// Release before this held duration counts as a short press (toggles light
-// sleep); at or beyond it, the button is treated as the deep-sleep hold in
+// Release before this held duration counts as a short press (toggles clock
+// mode); at or beyond it, the button is treated as the deep-sleep hold in
 // maybeSleep() instead.
 constexpr unsigned long kShortPressMs = 800;
 
@@ -37,19 +33,6 @@ void enterDeepSleep(HalGPIO& gpio) {
   halTiltSensor.deepSleep();
   display.deepSleep();
   powerManager.startDeepSleep(gpio);
-}
-
-void setTiltLock(const bool on) {
-  if (tiltLock == on) {
-    return;
-  }
-  tiltLock = on;
-  if (on) {
-    halTiltSensor.deepSleep();
-    LOG_INF("SLP", "Gyro lock on");
-  } else {
-    LOG_INF("SLP", "Gyro lock off");
-  }
 }
 }  // namespace
 
@@ -101,48 +84,41 @@ bool power::maybeSleep(HalGPIO& gpio, const Settings& settings) {
     enterDeepSleep(gpio);
     return true;
   }
-  const unsigned long lightMs = settings.lightSleepTimeoutMs();
-  if (lightMs > 0 && !tiltLock && idleMs >= lightMs) {
-    LOG_INF("SLP", "Idle timeout, gyro lock");
-    setTiltLock(true);
+  const unsigned long clockMs = settings.clockModeTimeoutMs();
+  if (clockMs > 0 && !screenManager.isClock() && idleMs >= clockMs) {
+    LOG_INF("SLP", "Idle timeout, clock mode");
+    screenManager.goToClock();
   }
   return false;
 }
 
-bool power::tiltLocked() { return tiltLock; }
-
-bool power::maybeToggleTiltLock(HalGPIO& gpio) {
+bool power::maybeEnterClock(HalGPIO& gpio) {
   // The wake-hold release (finger still down right after waking from deep
-  // sleep) must not also toggle the gyro lock.
+  // sleep) must not also open the clock.
   if (wakePowerReleasePending) {
     return false;
   }
-
-  if (suppressNextPowerShortPress) {
-    if (gpio.wasReleased(HalGPIO::BTN_POWER)) {
-      suppressNextPowerShortPress = false;
-    }
+  if (screenManager.isClock()) {
     return false;
   }
-
   if (gpio.wasReleased(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() <= kShortPressMs) {
-    setTiltLock(!tiltLock);
+    if (screenManager.blocksSleep()) {
+      return false;
+    }
+    LOG_INF("SLP", "Power short, clock mode");
+    screenManager.goToClock();
     return true;
-  }
-
-  if (tiltLock && (gpio.wasAnyPressed() || gpio.wasAnyReleased())) {
-    setTiltLock(false);
   }
   return false;
 }
 
 void power::idleDelay() {
-  // The idle power-saving delay only matters on the reader screen, where the
-  // device typically sits for long stretches between button presses. Other
-  // screens (home, settings, browser, file transfer) are short, active
-  // interactions and shouldn't be throttled — the idle gyro-lock timeout in
+  // The idle power-saving delay only matters on the reader and clock screens,
+  // where the device typically sits for long stretches between button presses.
+  // Other screens (home, settings, browser, file transfer) are short, active
+  // interactions and shouldn't be throttled — the idle clock-mode timeout in
   // maybeSleep() still applies regardless.
-  if (!screenManager.isReader()) {
+  if (!screenManager.isReader() && !screenManager.isClock()) {
     delay(1);
     return;
   }

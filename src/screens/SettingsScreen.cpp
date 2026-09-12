@@ -24,52 +24,61 @@ int itemCount() { return hasTilt() ? 7 : 6; }
 int tiltIndex() { return 4; }
 int firmwareIndex() { return hasTilt() ? 5 : 4; }
 
-void formatTimeout(char* out, size_t outSize, const char* prefix, const uint8_t minutes) {
-  if (minutes == 0) {
-    snprintf(out, outSize, "%s: never", prefix);
-  } else {
-    snprintf(out, outSize, "%s: %u min", prefix, minutes);
-  }
-}
-
-void formatLightSleep(char* out, size_t outSize) {
-  if (settings.sleepTimeoutSeconds == 0) {
-    snprintf(out, outSize, "Light sleep: none");
-  } else {
-    snprintf(out, outSize, "Light sleep: %u sec", settings.sleepTimeoutSeconds);
-  }
-}
-
-void bumpLightSleep() {
-  switch (settings.sleepTimeoutSeconds) {
-    case 0:
-      settings.sleepTimeoutSeconds = 30;
+void formatTrueSleep(char* out, size_t outSize) {
+  switch (settings.trueSleepMinutes) {
+    case Settings::kSleep15Min:
+      snprintf(out, outSize, "Sleep: 15 min");
       break;
-    case 30:
-      settings.sleepTimeoutSeconds = 45;
+    case Settings::kSleep1Hour:
+      snprintf(out, outSize, "Sleep: 1 hour");
       break;
-    case 45:
-      settings.sleepTimeoutSeconds = 60;
+    case Settings::kSleep6Hours:
+      snprintf(out, outSize, "Sleep: 6 hours");
       break;
     default:
-      settings.sleepTimeoutSeconds = 0;
+      snprintf(out, outSize, "Sleep: none");
+      break;
+  }
+}
+
+void formatClockMode(char* out, size_t outSize) {
+  if (settings.clockModeSeconds == 0) {
+    snprintf(out, outSize, "Clock mode: none");
+  } else {
+    snprintf(out, outSize, "Clock mode: %u sec", settings.clockModeSeconds);
+  }
+}
+
+void bumpClockMode() {
+  switch (settings.clockModeSeconds) {
+    case 0:
+      settings.clockModeSeconds = 30;
+      break;
+    case 30:
+      settings.clockModeSeconds = 45;
+      break;
+    case 45:
+      settings.clockModeSeconds = 60;
+      break;
+    default:
+      settings.clockModeSeconds = 0;
       break;
   }
 }
 
 void bumpTrueSleep() {
   switch (settings.trueSleepMinutes) {
-    case 0:
-      settings.trueSleepMinutes = 10;
+    case Settings::kSleepNone:
+      settings.trueSleepMinutes = Settings::kSleep15Min;
       break;
-    case 10:
-      settings.trueSleepMinutes = 20;
+    case Settings::kSleep15Min:
+      settings.trueSleepMinutes = Settings::kSleep1Hour;
       break;
-    case 20:
-      settings.trueSleepMinutes = 30;
+    case Settings::kSleep1Hour:
+      settings.trueSleepMinutes = Settings::kSleep6Hours;
       break;
     default:
-      settings.trueSleepMinutes = 0;
+      settings.trueSleepMinutes = Settings::kSleepNone;
       break;
   }
 }
@@ -125,11 +134,13 @@ void SettingsScreen::loop() {
     requestUpdate();
   } else if (input.wasReleased(MappedInput::Button::Confirm)) {
     if (index == 0) {
-      bumpLightSleep();
-      LOG_INF("SET", "Light sleep %u sec", settings.sleepTimeoutSeconds);
+      bumpClockMode();
+      LOG_INF("SET", "Clock mode %u sec", settings.clockModeSeconds);
     } else if (index == 1) {
       bumpTrueSleep();
-      LOG_INF("SET", "Sleep %u min", settings.trueSleepMinutes);
+      char sleepLog[32];
+      formatTrueSleep(sleepLog, sizeof(sleepLog));
+      LOG_INF("SET", "%s", sleepLog);
     } else if (index == 2) {
       bumpRefresh();
       LOG_INF("SET", "%s", refreshLabel());
@@ -170,17 +181,17 @@ void SettingsScreen::render() {
   snprintf(bat, sizeof(bat), "%u%%", static_cast<unsigned>(powerManager.getBatteryPercentage()));
   gfx.drawText(FONT_UI, gfx.width() - gfx.textWidth(FONT_UI, bat) - 12, 8, bat);
 
-  char light[32];
+  char clockMode[32];
   char deep[32];
   char night[32];
   char tilt[32];
-  formatLightSleep(light, sizeof(light));
-  formatTimeout(deep, sizeof(deep), "Sleep", settings.trueSleepMinutes);
+  formatClockMode(clockMode, sizeof(clockMode));
+  formatTrueSleep(deep, sizeof(deep));
   snprintf(night, sizeof(night), "Night mode: %s", settings.nightMode ? "on" : "off");
   snprintf(tilt, sizeof(tilt), "Tilt page turn: %s", settings.tiltPageTurn ? "on" : "off");
 
   const char* labels[7];
-  labels[0] = light;
+  labels[0] = clockMode;
   labels[1] = deep;
   labels[2] = refreshLabel();
   labels[3] = night;

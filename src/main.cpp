@@ -144,11 +144,10 @@ void loop() {
   if (power::consumeWakeRelease(gpio)) {
     return;
   }
-  if (power::maybeToggleTiltLock(gpio)) {
+  if (power::maybeEnterClock(gpio)) {
     return;
   }
-  const uint8_t tiltMode = power::tiltLocked() ? CrossPointTiltPageTurn::TILT_OFF : settings.tiltPageTurn;
-  halTiltSensor.update(tiltMode, CrossPointOrientation::PORTRAIT, screenManager.isReader());
+  halTiltSensor.update(settings.tiltPageTurn, CrossPointOrientation::PORTRAIT, screenManager.isReader());
   power::noteUserActivity(gpio);
   if (power::maybeSleep(gpio, settings)) {
     return;

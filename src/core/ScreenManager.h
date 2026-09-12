@@ -35,9 +35,11 @@ class ScreenManager {
   void goToSettings();
   void goToFirmwareUpdate(bool recovery = false);
   void goToWifiFileTransfer();
+  void goToClock();
   void showMessage(const char* text);
 
   bool isReader() const { return current && current->isReader(); }
+  bool isClock() const { return current && current->isClock(); }
   bool blocksSleep() const { return current && current->blocksSleep(); }
 };
 
