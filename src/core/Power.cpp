@@ -18,8 +18,19 @@ unsigned long allowSleepAt = 0;
 unsigned long lastActivity = 0;
 bool wakePowerReleasePending = false;
 bool powerReleasedSinceWake = false;
+bool pendingPowerOff = false;
 bool tiltLock = false;
 constexpr unsigned long kShortPressMs = 800;
+
+bool powerHoldAllowed() { return powerReleasedSinceWake && millis() >= allowSleepAt; }
+
+bool isLongPowerHold(const HalGPIO& gpio) {
+  return gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > kShortPressMs;
+}
+
+bool isLongPowerRelease(const HalGPIO& gpio) {
+  return gpio.wasReleased(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > kShortPressMs;
+}
 
 void paintDeepSleepWhite() {
   // Physical white regardless of night mode: inversion is applied on the
@@ -50,6 +61,8 @@ void paintReaderCornerDots(const bool gyroOff, const bool powerOff) {
 }
 
 void enterDeepSleep(HalGPIO& gpio) {
+  // Sleep prep (panel refresh, GPIO13 latch) must not run at the 10 MHz idle clock.
+  HalPowerManager::Lock powerLock;
   if (screenManager.isReader()) {
     paintReaderCornerDots(tiltLock, true);
   } else {
@@ -82,6 +95,8 @@ void setTiltLock(const bool on) {
 
 void power::noteWakeHold() {
   wakePowerReleasePending = true;
+  powerReleasedSinceWake = false;
+  pendingPowerOff = false;
   allowSleepAt = millis() + 2000;
   lastActivity = millis();
   LOG_DBG("SLP", "Wake hold, sleep allowed in 2s");
@@ -92,6 +107,8 @@ bool power::isWakeReleasePending() { return wakePowerReleasePending; }
 bool power::consumeWakeRelease(HalGPIO& gpio) {
   if (wakePowerReleasePending && !gpio.isPressed(HalGPIO::BTN_POWER)) {
     wakePowerReleasePending = false;
+    powerReleasedSinceWake = true;
+    pendingPowerOff = false;
     return true;
   }
   return false;
@@ -107,18 +124,26 @@ void power::noteUserActivity(HalGPIO& gpio) {
   }
 }
 
-bool power::maybeSleep(HalGPIO& gpio, const Settings& settings) {
-  if (screenManager.blocksSleep()) {
-    return false;
+void power::pollForHold(HalGPIO& gpio) {
+  if (powerHoldAllowed() && isLongPowerHold(gpio)) {
+    pendingPowerOff = true;
   }
+}
+
+bool power::maybeSleep(HalGPIO& gpio, const Settings& settings) {
   if (lastActivity == 0) {
     lastActivity = millis();
   }
-  if (powerReleasedSinceWake && millis() >= allowSleepAt && gpio.isPressed(HalGPIO::BTN_POWER) &&
-      gpio.getPowerButtonHeldTime() > 800) {
+  // blockSleep() only gates the idle timer (file transfer, firmware flash).
+  if (powerHoldAllowed() && (pendingPowerOff || isLongPowerHold(gpio) || isLongPowerRelease(gpio))) {
+    pendingPowerOff = false;
     LOG_INF("SLP", "Power hold, sleeping");
     enterDeepSleep(gpio);
     return true;
+  }
+
+  if (screenManager.blocksSleep()) {
+    return false;
   }
 
   const unsigned long idleMs = millis() - lastActivity;

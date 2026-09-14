@@ -3,6 +3,7 @@
 #include <HalDisplay.h>
 #include <HalTiltSensor.h>
 
+#include "core/Power.h"
 #include "core/Settings.h"
 
 uint16_t MappedInput::pendingForwardTaps = 0;
@@ -51,6 +52,7 @@ void MappedInput::update() {
 // Catch release edges the main loop misses during a blocking refresh.
 bool MappedInput::busyWaitPoll(int8_t /*busyPin*/, uint8_t /*busyLevel*/) {
   ::gpio.update();
+  power::pollForHold(::gpio);
   const bool edgeSides = ::gpio.hasEdgeSideButtons();
   if (::gpio.wasReleased(HalGPIO::BTN_DOWN) || ::gpio.wasReleased(HalGPIO::BTN_RIGHT) ||
       (edgeSides && ::gpio.wasReleased(HalGPIO::BTN_UP))) {

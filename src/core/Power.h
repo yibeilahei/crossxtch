@@ -10,6 +10,10 @@ void noteWakeHold();
 bool isWakeReleasePending();
 bool consumeWakeRelease(HalGPIO& gpio);
 void noteUserActivity(HalGPIO& gpio);
+// Latch a long power hold sampled outside the main loop (blocking panel BUSY
+// wait). maybeSleep() consumes it so a hold that ends before the refresh
+// returns still powers the device off.
+void pollForHold(HalGPIO& gpio);
 bool maybeSleep(HalGPIO& gpio, const Settings& settings);
 void idleDelay();
 
