@@ -27,7 +27,6 @@ class Screen {
   virtual void loop() {}
   virtual void render() {}
   virtual bool isReader() const { return false; }
-  virtual bool isClock() const { return false; }
   virtual bool blocksSleep() const { return false; }
 
   void requestUpdate();
@@ -41,7 +40,6 @@ class Screen {
   void goToSettings();
   void goToFirmwareUpdate(bool recovery = false);
   void goToWifiFileTransfer();
-  void goToClock();
 
   // HALF_REFRESH on the first paint after enter/resume, FAST afterwards.
   void presentUi();

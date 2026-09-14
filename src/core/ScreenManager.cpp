@@ -5,7 +5,6 @@
 #include <Memory.h>
 
 #include "screens/BrowserScreen.h"
-#include "screens/ClockScreen.h"
 #include "screens/HomeScreen.h"
 #include "screens/MessageScreen.h"
 #include "screens/ReaderScreen.h"
@@ -156,17 +155,6 @@ void ScreenManager::goToWifiFileTransfer() {
   auto wifiList = makeScreen<WifiListScreen>(gfx, input, "wifi");
   if (wifiList) {
     push(std::move(wifiList));
-  }
-}
-
-void ScreenManager::goToClock() {
-  if (isClock() || blocksSleep()) {
-    return;
-  }
-  LOG_INF("SCR", "Clock");
-  auto clock = makeScreen<ClockScreen>(gfx, input, "clock");
-  if (clock) {
-    push(std::move(clock));
   }
 }
 

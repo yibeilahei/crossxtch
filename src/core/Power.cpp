@@ -1,6 +1,7 @@
 #include "core/Power.h"
 
 #include <Arduino.h>
+#include <Gfx.h>
 #include <HalDisplay.h>
 #include <HalGPIO.h>
 #include <HalPowerManager.h>
@@ -10,14 +11,14 @@
 #include "core/ScreenManager.h"
 #include "core/Settings.h"
 
+extern Gfx gfx;
+
 namespace {
 unsigned long allowSleepAt = 0;
 unsigned long lastActivity = 0;
 bool wakePowerReleasePending = false;
 bool powerReleasedSinceWake = false;
-// Release before this held duration counts as a short press (toggles clock
-// mode); at or beyond it, the button is treated as the deep-sleep hold in
-// maybeSleep() instead.
+bool tiltLock = false;
 constexpr unsigned long kShortPressMs = 800;
 
 void paintDeepSleepWhite() {
@@ -28,11 +29,54 @@ void paintDeepSleepWhite() {
   display.displayBuffer(HalDisplay::FULL_REFRESH);
 }
 
+int iosPtToPx(const int pt) {
+  // iOS point: 1pt = 1/163 inch. X3 3.7" 528×792 ≈ 259 PPI; X4 4.26" 800×480 ≈ 219 PPI.
+  const int ppi = gpio.deviceIsX3() ? 259 : 219;
+  return (pt * ppi + 163 / 2) / 163;
+}
+
+void paintReaderCornerDots(const bool gyroOff, const bool powerOff) {
+  // Leave the current page on the panel. Resync the gray baseline so FAST
+  // only drives the markers instead of promoting to a flashing HALF.
+  gfx.cleanupGrayscaleBuffers();
+  const int dot = iosPtToPx(8);
+  if (gyroOff) {
+    gfx.fillRect(1, 1, dot, dot, true);
+  }
+  if (powerOff) {
+    gfx.fillRect(gfx.width() - dot - 1, 1, dot, dot, true);
+  }
+  gfx.present(HalDisplay::FAST_REFRESH);
+}
+
 void enterDeepSleep(HalGPIO& gpio) {
-  paintDeepSleepWhite();
+  if (screenManager.isReader()) {
+    paintReaderCornerDots(tiltLock, true);
+  } else {
+    paintDeepSleepWhite();
+  }
   halTiltSensor.deepSleep();
   display.deepSleep();
   powerManager.startDeepSleep(gpio);
+}
+
+void setTiltLock(const bool on) {
+  if (tiltLock == on) {
+    return;
+  }
+  tiltLock = on;
+  if (on) {
+    halTiltSensor.deepSleep();
+    LOG_INF("SLP", "Gyro lock on");
+    if (screenManager.isReader()) {
+      paintReaderCornerDots(true, false);
+    }
+  } else {
+    LOG_INF("SLP", "Gyro lock off");
+    if (screenManager.isReader()) {
+      screenManager.requestUpdate();
+    }
+  }
 }
 }  // namespace
 
@@ -84,41 +128,43 @@ bool power::maybeSleep(HalGPIO& gpio, const Settings& settings) {
     enterDeepSleep(gpio);
     return true;
   }
-  const unsigned long clockMs = settings.clockModeTimeoutMs();
-  if (clockMs > 0 && !screenManager.isClock() && idleMs >= clockMs) {
-    LOG_INF("SLP", "Idle timeout, clock mode");
-    screenManager.goToClock();
+  const unsigned long gyroMs = settings.gyroAutoOffTimeoutMs();
+  if (gyroMs > 0 && !tiltLock && settings.tiltPageTurn && idleMs >= gyroMs) {
+    LOG_INF("SLP", "Idle timeout, gyro lock");
+    setTiltLock(true);
   }
   return false;
 }
 
-bool power::maybeEnterClock(HalGPIO& gpio) {
+bool power::tiltLocked() { return tiltLock; }
+
+void power::paintGyroOffMarker() { paintReaderCornerDots(true, false); }
+
+bool power::maybeToggleTiltLock(HalGPIO& gpio) {
   // The wake-hold release (finger still down right after waking from deep
-  // sleep) must not also open the clock.
+  // sleep) must not also toggle the gyro lock.
   if (wakePowerReleasePending) {
     return false;
   }
-  if (screenManager.isClock()) {
-    return false;
-  }
+
   if (gpio.wasReleased(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() <= kShortPressMs) {
-    if (screenManager.blocksSleep()) {
-      return false;
-    }
-    LOG_INF("SLP", "Power short, clock mode");
-    screenManager.goToClock();
+    setTiltLock(!tiltLock);
     return true;
+  }
+
+  if (tiltLock && (gpio.wasAnyPressed() || gpio.wasAnyReleased())) {
+    setTiltLock(false);
   }
   return false;
 }
 
 void power::idleDelay() {
-  // The idle power-saving delay only matters on the reader and clock screens,
-  // where the device typically sits for long stretches between button presses.
-  // Other screens (home, settings, browser, file transfer) are short, active
-  // interactions and shouldn't be throttled — the idle clock-mode timeout in
+  // The idle power-saving delay only matters on the reader screen, where the
+  // device typically sits for long stretches between button presses. Other
+  // screens (home, settings, browser, file transfer) are short, active
+  // interactions and shouldn't be throttled — the idle sleep timeout in
   // maybeSleep() still applies regardless.
-  if (!screenManager.isReader() && !screenManager.isClock()) {
+  if (!screenManager.isReader()) {
     delay(1);
     return;
   }

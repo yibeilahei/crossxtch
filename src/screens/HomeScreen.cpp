@@ -33,10 +33,6 @@ void HomeScreen::onResume() {
 }
 
 void HomeScreen::loop() {
-  if (input.wasReleased(MappedInput::Button::Back)) {
-    goToClock();
-    return;
-  }
   uint8_t hour = 0;
   uint8_t minute = 0;
   if (halClock.getLocalTime(hour, minute, settings.clockUtcOffsetQ) && minute != shownMinute) {

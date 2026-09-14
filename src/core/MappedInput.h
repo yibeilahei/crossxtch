@@ -33,7 +33,7 @@ class MappedInput {
   int consumeNavigationDelta();
   // Reader paging. X3: both side buttons go forward; front Left is back.
   // X4: Down/Right forward, Up/Left back. The power button no longer pages
-  // (short press now toggles clock mode; see core/Power.h).
+  // (short press now toggles the gyroscope lock; see core/Power.h).
   int consumeReaderPageDelta();
 
  private:

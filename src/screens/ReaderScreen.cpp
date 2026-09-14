@@ -12,6 +12,7 @@
 
 #include <HalTiltSensor.h>
 
+#include "core/Power.h"
 #include "core/Settings.h"
 #include "core/fontIds.h"
 #include "screens/ChapterSelectionScreen.h"
@@ -190,6 +191,9 @@ void ReaderScreen::render() {
   }
   const unsigned long blitMs = millis() - blitStart;
   LOG_DBG("RDR", "Blit page %lu/%u %lums", static_cast<unsigned long>(page + 1), book.pageCount(), blitMs);
+  if (power::tiltLocked()) {
+    power::paintGyroOffMarker();
+  }
 
   // Skip prefetch when the user already queued a skip-ahead or back-turn
   // during the blit; loading N+1 would delay that jump by ~146 ms.

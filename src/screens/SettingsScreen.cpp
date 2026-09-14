@@ -20,48 +20,49 @@
 namespace {
 // Tilt page-turn is only offered on boards with the QMI8658 IMU (X3).
 bool hasTilt() { return halTiltSensor.isAvailable(); }
-int itemCount() { return hasTilt() ? 7 : 6; }
-int tiltIndex() { return 4; }
-int firmwareIndex() { return hasTilt() ? 5 : 4; }
+int itemCount() { return hasTilt() ? 7 : 5; }
+int tiltIndex() { return 3; }
+int gyroIndex() { return 4; }
+int firmwareIndex() { return hasTilt() ? 5 : 3; }
 
 void formatTrueSleep(char* out, size_t outSize) {
   switch (settings.trueSleepMinutes) {
+    case Settings::kSleep5Min:
+      snprintf(out, outSize, "Power Off: 5 min");
+      break;
+    case Settings::kSleep10Min:
+      snprintf(out, outSize, "Power Off: 10 min");
+      break;
     case Settings::kSleep15Min:
-      snprintf(out, outSize, "Sleep: 15 min");
-      break;
-    case Settings::kSleep1Hour:
-      snprintf(out, outSize, "Sleep: 1 hour");
-      break;
-    case Settings::kSleep6Hours:
-      snprintf(out, outSize, "Sleep: 6 hours");
+      snprintf(out, outSize, "Power Off: 15 min");
       break;
     default:
-      snprintf(out, outSize, "Sleep: none");
+      snprintf(out, outSize, "Power Off: none");
       break;
   }
 }
 
-void formatClockMode(char* out, size_t outSize) {
-  if (settings.clockModeSeconds == 0) {
-    snprintf(out, outSize, "Clock mode: none");
+void formatGyroAutoOff(char* out, size_t outSize) {
+  if (settings.gyroAutoOffSeconds == 0) {
+    snprintf(out, outSize, "Gyro auto-off: none");
   } else {
-    snprintf(out, outSize, "Clock mode: %u sec", settings.clockModeSeconds);
+    snprintf(out, outSize, "Gyro auto-off: %u sec", settings.gyroAutoOffSeconds);
   }
 }
 
-void bumpClockMode() {
-  switch (settings.clockModeSeconds) {
+void bumpGyroAutoOff() {
+  switch (settings.gyroAutoOffSeconds) {
     case 0:
-      settings.clockModeSeconds = 30;
+      settings.gyroAutoOffSeconds = 30;
       break;
     case 30:
-      settings.clockModeSeconds = 45;
+      settings.gyroAutoOffSeconds = 45;
       break;
     case 45:
-      settings.clockModeSeconds = 60;
+      settings.gyroAutoOffSeconds = 60;
       break;
     default:
-      settings.clockModeSeconds = 0;
+      settings.gyroAutoOffSeconds = 0;
       break;
   }
 }
@@ -69,13 +70,13 @@ void bumpClockMode() {
 void bumpTrueSleep() {
   switch (settings.trueSleepMinutes) {
     case Settings::kSleepNone:
+      settings.trueSleepMinutes = Settings::kSleep5Min;
+      break;
+    case Settings::kSleep5Min:
+      settings.trueSleepMinutes = Settings::kSleep10Min;
+      break;
+    case Settings::kSleep10Min:
       settings.trueSleepMinutes = Settings::kSleep15Min;
-      break;
-    case Settings::kSleep15Min:
-      settings.trueSleepMinutes = Settings::kSleep1Hour;
-      break;
-    case Settings::kSleep1Hour:
-      settings.trueSleepMinutes = Settings::kSleep6Hours;
       break;
     default:
       settings.trueSleepMinutes = Settings::kSleepNone;
@@ -134,23 +135,23 @@ void SettingsScreen::loop() {
     requestUpdate();
   } else if (input.wasReleased(MappedInput::Button::Confirm)) {
     if (index == 0) {
-      bumpClockMode();
-      LOG_INF("SET", "Clock mode %u sec", settings.clockModeSeconds);
-    } else if (index == 1) {
       bumpTrueSleep();
       char sleepLog[32];
       formatTrueSleep(sleepLog, sizeof(sleepLog));
       LOG_INF("SET", "%s", sleepLog);
-    } else if (index == 2) {
+    } else if (index == 1) {
       bumpRefresh();
       LOG_INF("SET", "%s", refreshLabel());
-    } else if (index == 3) {
+    } else if (index == 2) {
       settings.nightMode = settings.nightMode ? 0 : 1;
       display.setInverted(settings.nightMode != 0);
       LOG_INF("SET", "Night mode %s", settings.nightMode ? "on" : "off");
     } else if (hasTilt() && index == tiltIndex()) {
       settings.tiltPageTurn = settings.tiltPageTurn ? 0 : 1;
       LOG_INF("SET", "Tilt page turn %s", settings.tiltPageTurn ? "on" : "off");
+    } else if (hasTilt() && index == gyroIndex()) {
+      bumpGyroAutoOff();
+      LOG_INF("SET", "Gyro auto-off %u sec", settings.gyroAutoOffSeconds);
     } else if (index == firmwareIndex()) {
       settings.save();
       goToFirmwareUpdate();
@@ -181,27 +182,27 @@ void SettingsScreen::render() {
   snprintf(bat, sizeof(bat), "%u%%", static_cast<unsigned>(powerManager.getBatteryPercentage()));
   gfx.drawText(FONT_UI, gfx.width() - gfx.textWidth(FONT_UI, bat) - 12, 8, bat);
 
-  char clockMode[32];
   char deep[32];
   char night[32];
   char tilt[32];
-  formatClockMode(clockMode, sizeof(clockMode));
+  char gyro[32];
   formatTrueSleep(deep, sizeof(deep));
   snprintf(night, sizeof(night), "Night mode: %s", settings.nightMode ? "on" : "off");
   snprintf(tilt, sizeof(tilt), "Tilt page turn: %s", settings.tiltPageTurn ? "on" : "off");
+  formatGyroAutoOff(gyro, sizeof(gyro));
 
   const char* labels[7];
-  labels[0] = clockMode;
-  labels[1] = deep;
-  labels[2] = refreshLabel();
-  labels[3] = night;
+  labels[0] = deep;
+  labels[1] = refreshLabel();
+  labels[2] = night;
   if (hasTilt()) {
-    labels[4] = tilt;
+    labels[3] = tilt;
+    labels[4] = gyro;
     labels[5] = "Update firmware";
     labels[6] = "Back";
   } else {
-    labels[4] = "Update firmware";
-    labels[5] = "Back";
+    labels[3] = "Update firmware";
+    labels[4] = "Back";
   }
 
   const int rowH = gfx.lineHeight(FONT_UI) + 10;

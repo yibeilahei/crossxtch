@@ -33,19 +33,19 @@ void Settings::load() {
   loaded.version = VERSION;
   *this = loaded;
   lastBookPath[sizeof(lastBookPath) - 1] = '\0';
-  if (clockModeSeconds != 0 && clockModeSeconds != 30 && clockModeSeconds != 45 &&
-      clockModeSeconds != 60) {
-    clockModeSeconds = 60;
+  if (gyroAutoOffSeconds != 0 && gyroAutoOffSeconds != 30 && gyroAutoOffSeconds != 45 &&
+      gyroAutoOffSeconds != 60) {
+    gyroAutoOffSeconds = 60;
   }
-  if (trueSleepMinutes != kSleepNone && trueSleepMinutes != kSleep15Min && trueSleepMinutes != kSleep1Hour &&
-      trueSleepMinutes != kSleep6Hours) {
+  if (trueSleepMinutes != kSleepNone && trueSleepMinutes != kSleep5Min && trueSleepMinutes != kSleep10Min &&
+      trueSleepMinutes != kSleep15Min) {
     trueSleepMinutes = kSleep15Min;
   }
   if (clockUtcOffsetQ > 104) {
     clockUtcOffsetQ = 48;
   }
-  LOG_INF("SET", "Loaded clockMode=%u sec sleep=%u refresh=%u night=%u tilt=%u clock=%u tzq=%u last='%s'",
-          clockModeSeconds, trueSleepMinutes, refreshEveryNPages, nightMode, tiltPageTurn, clockHasBeenSynced,
+  LOG_INF("SET", "Loaded gyroOff=%u sec sleep=%u refresh=%u night=%u tilt=%u clock=%u tzq=%u last='%s'",
+          gyroAutoOffSeconds, trueSleepMinutes, refreshEveryNPages, nightMode, tiltPageTurn, clockHasBeenSynced,
           clockUtcOffsetQ, lastBookPath);
 }
 
@@ -61,7 +61,7 @@ void Settings::save() const {
     LOG_ERR("SET", "Short settings write (%u of %u)", static_cast<unsigned>(n), static_cast<unsigned>(sizeof(*this)));
     return;
   }
-  LOG_DBG("SET", "Saved clockMode=%u sleep=%u refresh=%u night=%u tilt=%u last='%s'", clockModeSeconds,
+  LOG_DBG("SET", "Saved gyroOff=%u sleep=%u refresh=%u night=%u tilt=%u last='%s'", gyroAutoOffSeconds,
           trueSleepMinutes, refreshEveryNPages, nightMode, tiltPageTurn, lastBookPath);
 }
 
@@ -74,19 +74,11 @@ unsigned long minutesToMs(const uint8_t minutes) {
 }
 }  // namespace
 
-unsigned long Settings::clockModeTimeoutMs() const {
-  if (clockModeSeconds == 0) {
+unsigned long Settings::gyroAutoOffTimeoutMs() const {
+  if (gyroAutoOffSeconds == 0) {
     return 0;
   }
-  return static_cast<unsigned long>(clockModeSeconds) * 1000UL;
+  return static_cast<unsigned long>(gyroAutoOffSeconds) * 1000UL;
 }
 
-unsigned long Settings::trueSleepTimeoutMs() const {
-  if (trueSleepMinutes == kSleepNone) {
-    return 0;
-  }
-  if (trueSleepMinutes == kSleep6Hours) {
-    return 6UL * 60UL * 60UL * 1000UL;
-  }
-  return minutesToMs(trueSleepMinutes);
-}
+unsigned long Settings::trueSleepTimeoutMs() const { return minutesToMs(trueSleepMinutes); }

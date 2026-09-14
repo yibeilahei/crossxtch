@@ -8,15 +8,15 @@ struct Settings {
   static constexpr uint16_t kMinVersion = 3;
   static constexpr const char* kDir = "/.crossxtch";
   static constexpr const char* kPath = "/.crossxtch/settings.bin";
-  // trueSleepMinutes: 0 = none, 15 = 15 min, 60 = 1 hour; 255 = 6 hours.
+  // trueSleepMinutes: 0 = none, else 5 / 10 / 15 minutes.
   static constexpr uint8_t kSleepNone = 0;
+  static constexpr uint8_t kSleep5Min = 5;
+  static constexpr uint8_t kSleep10Min = 10;
   static constexpr uint8_t kSleep15Min = 15;
-  static constexpr uint8_t kSleep1Hour = 60;
-  static constexpr uint8_t kSleep6Hours = 255;
 
   uint32_t magic = MAGIC;
   uint16_t version = VERSION;
-  uint8_t clockModeSeconds = 60;  // clock overlay; 0 = none, else 30/45/60
+  uint8_t gyroAutoOffSeconds = 60;  // IMU auto-lock; 0 = none, else 30/45/60. Same slot as old clockModeSeconds.
   uint8_t refreshEveryNPages = 5;
   uint8_t nightMode = 0;
   uint8_t tiltPageTurn = 0;  // 0 = off, 1 = on (flick either direction pages forward, X3 only)
@@ -27,7 +27,7 @@ struct Settings {
 
   void load();
   void save() const;
-  unsigned long clockModeTimeoutMs() const;
+  unsigned long gyroAutoOffTimeoutMs() const;
   unsigned long trueSleepTimeoutMs() const;
 };
 
