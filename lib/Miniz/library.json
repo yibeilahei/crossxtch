@@ -1,0 +1,14 @@
+{
+  "name": "Miniz",
+  "version": "3.1.2",
+  "build": {
+    "flags": [
+      "-I../../freeink-sdk/libs/book/ContentProtection/third_party/miniz",
+      "-DMINIZ_NO_STDIO",
+      "-DMINIZ_NO_TIME",
+      "-DMINIZ_NO_ARCHIVE_APIS",
+      "-DMINIZ_NO_ARCHIVE_WRITING_APIS",
+      "-DMINIZ_NO_ZLIB_COMPATIBLE_NAMES"
+    ]
+  }
+}
