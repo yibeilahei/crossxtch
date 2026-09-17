@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "core/UiText.h"
 #include "core/fontIds.h"
 #include "screens/ReaderScreen.h"
 
@@ -94,7 +95,7 @@ void PageJumpScreen::loop() {
 
 void PageJumpScreen::render() {
   gfx.clear(false);
-  gfx.drawCenteredText(FONT_UI_BOLD, 8, "Go to page");
+  gfx.drawCenteredText(FONT_UI_BOLD, 8, uiText::goToPage);
 
   char field[32];
   snprintf(field, sizeof(field), "%s / %u", digits.empty() ? "_" : digits.c_str(), pageCount);
@@ -102,7 +103,7 @@ void PageJumpScreen::render() {
   gfx.drawText(FONT_UI, 32, 48, field);
 
   char currentLabel[32];
-  snprintf(currentLabel, sizeof(currentLabel), "Currently on page %lu", static_cast<unsigned long>(currentPage + 1));
+  snprintf(currentLabel, sizeof(currentLabel), uiText::currentlyOnPage, static_cast<unsigned long>(currentPage + 1));
   gfx.drawText(FONT_UI, 32, 40 + gfx.lineHeight(FONT_UI) + 20, currentLabel);
 
   const int gridTop = 40 + 2 * gfx.lineHeight(FONT_UI) + 44;
@@ -113,11 +114,11 @@ void PageJumpScreen::render() {
     const int y = gridTop + row * rowH;
     for (int col = 0; col < cols; ++col) {
       const bool selected = (row == selRow && col == selCol);
-      char label[8];
+      char label[16];
       if (row == 0) {
         snprintf(label, sizeof(label), "%c", kDigits[col]);
       } else {
-        snprintf(label, sizeof(label), "%s", col == 0 ? "Del" : "Go");
+        snprintf(label, sizeof(label), "%s", col == 0 ? uiText::keyDel : uiText::keyGo);
       }
       const int x = col * cellW;
       if (selected) {

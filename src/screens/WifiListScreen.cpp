@@ -8,6 +8,7 @@
 #include <cstdio>
 
 #include "core/UiList.h"
+#include "core/UiText.h"
 #include "core/fontIds.h"
 #include "network/WifiCredentialStore.h"
 #include "network/WifiSession.h"
@@ -36,7 +37,7 @@ void WifiListScreen::onExit() {
 }
 
 bool WifiListScreen::promptPassword() {
-  auto keyboard = makeUniqueNoThrow<KeyboardScreen>(gfx, input, *this, "Wi-Fi Password",
+  auto keyboard = makeUniqueNoThrow<KeyboardScreen>(gfx, input, *this, uiText::wifiPassword,
                                                     WifiCredentialStore::kPasswordLen - 1, /*passwordMode=*/false);
   if (!keyboard) {
     LOG_ERR("WIFI", "OOM: keyboard");
@@ -232,19 +233,19 @@ void WifiListScreen::loop() {
 
 void WifiListScreen::render() {
   gfx.clear(false);
-  gfx.drawCenteredText(FONT_UI_BOLD, 24, "Wi-Fi");
+  gfx.drawCenteredText(FONT_UI_BOLD, 24, uiText::wifi);
 
   switch (state) {
     case State::Scanning:
       gfx.drawCenteredText(FONT_UI, gfx.height() / 2,
-                           wifiCredentials.hasAny() ? "Looking for saved Wi-Fi..." : "Scanning...");
+                           wifiCredentials.hasAny() ? uiText::lookingForSavedWifi : uiText::scanning);
       if (wifiCredentials.hasAny()) {
-        gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 36, "Confirm to pick a network");
+        gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 36, uiText::confirmToPickNetwork);
       }
       break;
     case State::NetworkList: {
       if (networks.empty()) {
-        gfx.drawCenteredText(FONT_UI, gfx.height() / 2, "No networks found");
+        gfx.drawCenteredText(FONT_UI, gfx.height() / 2, uiText::noNetworks);
         break;
       }
       const int rowH = gfx.lineHeight(FONT_UI) + 8;
@@ -256,7 +257,7 @@ void WifiListScreen::render() {
       for (int i = window; i < last; ++i) {
         const auto& net = networks[static_cast<size_t>(i)];
         const bool saved = wifiCredentials.find(net.ssid.c_str()) != nullptr;
-        const char* mark = saved ? "  [saved]" : (net.encrypted ? "  [locked]" : "");
+        const char* mark = saved ? uiText::savedMark : (net.encrypted ? uiText::lockedMark : "");
         snprintf(label, sizeof(label), "%s%s", net.ssid.c_str(), mark);
         ui::drawRow(gfx, top + (i - window) * rowH, rowH, label, i == index);
       }
@@ -264,22 +265,22 @@ void WifiListScreen::render() {
     }
     case State::Connecting: {
       char msg[80];
-      snprintf(msg, sizeof(msg), autoConnecting ? "Joining %s..." : "Connecting to %s...", pendingSsid.c_str());
+      snprintf(msg, sizeof(msg), uiText::connectingTo, pendingSsid.c_str());
       gfx.drawCenteredText(FONT_UI, gfx.height() / 2, msg);
       if (autoConnecting) {
-        gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 36, "Confirm to pick a network");
+        gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 36, uiText::confirmToPickNetwork);
       }
       break;
     }
     case State::Failed:
-      gfx.drawCenteredText(FONT_UI, gfx.height() / 2 - 20, "Connection failed");
-      gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 20, "Press Confirm to try again");
+      gfx.drawCenteredText(FONT_UI, gfx.height() / 2 - 20, uiText::connectionFailed);
+      gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 20, uiText::confirmRetry);
       break;
     case State::ClearPassword:
-      gfx.drawCenteredText(FONT_UI_BOLD, gfx.height() / 2 - 48, "Connection failed");
+      gfx.drawCenteredText(FONT_UI_BOLD, gfx.height() / 2 - 48, uiText::connectionFailed);
       gfx.drawCenteredText(FONT_UI, gfx.height() / 2 - 12, pendingSsid.c_str());
-      gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 28, "Confirm to clear password");
-      gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 56, "Back to keep it");
+      gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 28, uiText::confirmClearPassword);
+      gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 56, uiText::backToKeepPassword);
       break;
   }
 

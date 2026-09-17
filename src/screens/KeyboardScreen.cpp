@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "core/UiText.h"
 #include "core/fontIds.h"
 #include "screens/WifiListScreen.h"
 
@@ -168,23 +169,23 @@ void KeyboardScreen::render() {
     const int y = gridTop + row * rowH;
     for (int col = 0; col < cols; ++col) {
       const bool selected = (row == selRow && col == selCol);
-      char label[8];
+      char label[16];
       if (row == 4) {
         switch (col) {
           case 0:
-            snprintf(label, sizeof(label), "%s", shifted ? "SHIFT" : "shift");
+            snprintf(label, sizeof(label), "%s", uiText::keyShift);
             break;
           case 1:
             snprintf(label, sizeof(label), "%s", symbolsMode ? "ABC" : "123");
             break;
           case 2:
-            snprintf(label, sizeof(label), "Space");
+            snprintf(label, sizeof(label), "%s", uiText::keySpace);
             break;
           case 3:
-            snprintf(label, sizeof(label), "Del");
+            snprintf(label, sizeof(label), "%s", uiText::keyDel);
             break;
           default:
-            snprintf(label, sizeof(label), "Done");
+            snprintf(label, sizeof(label), "%s", uiText::keyDone);
             break;
         }
       } else {

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "core/UiText.h"
 #include "core/fontIds.h"
 
 namespace {
@@ -47,8 +48,8 @@ void UpdateScreen::loop() {
   } else if (state == State::Updating && !started) {
     started = true;
     gfx.clear(false);
-    gfx.drawCenteredText(FONT_UI_BOLD, gfx.height() / 2 - 16, "Updating firmware");
-    gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 16, "Do not power off");
+    gfx.drawCenteredText(FONT_UI_BOLD, gfx.height() / 2 - 16, uiText::updatingFirmware);
+    gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 16, uiText::doNotPowerOff);
     gfx.present(HalDisplay::HALF_REFRESH);
     if (!sdUpdate::flash(firmwarePath)) {
       error = sdUpdate::lastError();
@@ -60,8 +61,8 @@ void UpdateScreen::loop() {
       return;
     }
     gfx.clear(false);
-    gfx.drawCenteredText(FONT_UI_BOLD, gfx.height() / 2, "Update complete");
-    gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 28, "Restarting");
+    gfx.drawCenteredText(FONT_UI_BOLD, gfx.height() / 2, uiText::updateComplete);
+    gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 28, uiText::restarting);
     gfx.present(HalDisplay::HALF_REFRESH);
     delay(800);
     esp_restart();
@@ -78,16 +79,16 @@ void UpdateScreen::render() {
   }
   gfx.clear(false);
   if (state == State::Failed) {
-    gfx.drawCenteredText(FONT_UI_BOLD, gfx.height() / 2 - 16, "Update failed");
-    gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 16, error ? error : "");
+    gfx.drawCenteredText(FONT_UI_BOLD, gfx.height() / 2 - 16, uiText::updateFailed);
+    gfx.drawCenteredText(FONT_UI, gfx.height() / 2 + 16, uiText::error(error));
   } else {
-    gfx.drawCenteredText(FONT_UI_BOLD, 36, "Update firmware?");
+    gfx.drawCenteredText(FONT_UI_BOLD, 36, uiText::updateFirmwareQ);
     gfx.drawCenteredText(FONT_UI, 100, fileName(firmwarePath));
     char sizeLine[32];
     snprintf(sizeLine, sizeof(sizeLine), "%u KB", static_cast<unsigned>(check.size / 1024));
     gfx.drawCenteredText(FONT_UI, 130, sizeLine);
-    gfx.drawCenteredText(FONT_UI, gfx.height() - 80, "Confirm to flash");
-    gfx.drawCenteredText(FONT_UI, gfx.height() - 52, "Back to cancel");
+    gfx.drawCenteredText(FONT_UI, gfx.height() - 80, uiText::confirmToFlash);
+    gfx.drawCenteredText(FONT_UI, gfx.height() - 52, uiText::backToCancel);
   }
   gfx.present(HalDisplay::FAST_REFRESH);
 }
