@@ -35,11 +35,11 @@ class Screen {
   void finish(int levels = 1);
   void push(std::unique_ptr<Screen> screen);
   void goHome();
-  void goToReader(const char* path);
-  void goToBrowser();
-  void goToSettings();
+  bool goToReader(const char* path);
+  bool goToBrowser();
+  bool goToSettings();
   void goToFirmwareUpdate(bool recovery = false);
-  void goToWifiFileTransfer();
+  bool goToWifiFileTransfer();
 
   // HALF_REFRESH on the first paint after enter/resume, FAST afterwards.
   void presentUi();

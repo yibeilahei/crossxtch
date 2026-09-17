@@ -5,11 +5,14 @@
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <XgfFont.h>
 
 #include <cstdio>
 
+#include "core/ReadingFont.h"
 #include "core/Settings.h"
 #include "core/UiList.h"
+#include "core/UiText.h"
 #include "core/fontIds.h"
 
 void HomeScreen::refreshMenu() {
@@ -20,16 +23,36 @@ void HomeScreen::refreshMenu() {
   }
 }
 
+void HomeScreen::loadCjk() {
+  if (itemCount != 4) {
+    cjk.close();
+    return;
+  }
+  if (cjk.loaded()) {
+    return;
+  }
+  if (!ReadingFont::loadUi(cjk)) {
+    LOG_INF("HOME", "No UI font (%s)", cjk.lastError());
+  }
+}
+
 void HomeScreen::onEnter() {
   Screen::onEnter();
   refreshMenu();
+  loadCjk();
   LOG_INF("HOME", "Continue %s last='%s'", itemCount == 4 ? "yes" : "no", settings.lastBookPath);
   requestUpdate();
+}
+
+void HomeScreen::onExit() {
+  cjk.close();
+  Screen::onExit();
 }
 
 void HomeScreen::onResume() {
   Screen::onResume();
   refreshMenu();
+  loadCjk();
 }
 
 void HomeScreen::loop() {
@@ -44,18 +67,25 @@ void HomeScreen::loop() {
     const bool hasContinue = itemCount == 4;
     // Item order: [Continue?], Browse, File Transfer, Settings.
     int i = index - (hasContinue ? 1 : 0);
+    // Drop the UI face before pushing a screen that may load the same .xgf2
+    // (reader, browser) or needs the heap (Wi-Fi).
+    cjk.close();
+    bool ok = true;
     if (hasContinue && index == 0) {
       LOG_DBG("HOME", "Continue");
-      goToReader(settings.lastBookPath);
+      ok = goToReader(settings.lastBookPath);
     } else if (i == 0) {
       LOG_DBG("HOME", "Browse");
-      goToBrowser();
+      ok = goToBrowser();
     } else if (i == 1) {
       LOG_DBG("HOME", "File Transfer");
-      goToWifiFileTransfer();
+      ok = goToWifiFileTransfer();
     } else {
       LOG_DBG("HOME", "Settings");
-      goToSettings();
+      ok = goToSettings();
+    }
+    if (!ok) {
+      loadCjk();
     }
   }
 }
@@ -80,11 +110,11 @@ void HomeScreen::render() {
   const char* labels[4];
   int n = 0;
   if (hasContinue) {
-    labels[n++] = "Continue";
+    labels[n++] = uiText::continueReading;
   }
-  labels[n++] = "Browse";
-  labels[n++] = "File Transfer";
-  labels[n++] = "Settings";
+  labels[n++] = uiText::browse;
+  labels[n++] = uiText::fileTransfer;
+  labels[n++] = uiText::settings;
 
   const int rowH = gfx.lineHeight(FONT_UI) + 10;
   const int startY = 120;
@@ -93,7 +123,7 @@ void HomeScreen::render() {
   }
 
   if (hasContinue) {
-    gfx.drawText(FONT_UI, 24, gfx.height() - 48, settings.lastBookPath);
+    cjk.drawUtf8(gfx, FONT_UI, 24, gfx.height() - 48, settings.lastBookPath, true, gfx.width() - 24);
   }
   presentUi();
 }

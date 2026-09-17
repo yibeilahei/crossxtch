@@ -113,28 +113,34 @@ void ScreenManager::goHome() {
   }
 }
 
-void ScreenManager::goToReader(const char* path) {
+bool ScreenManager::goToReader(const char* path) {
   LOG_INF("SCR", "Reader %s", path ? path : "");
   auto reader = makeScreen<ReaderScreen>(gfx, input, "reader", path);
-  if (reader) {
-    push(std::move(reader));
+  if (!reader) {
+    return false;
   }
+  push(std::move(reader));
+  return true;
 }
 
-void ScreenManager::goToBrowser() {
+bool ScreenManager::goToBrowser() {
   LOG_INF("SCR", "Browser");
   auto browser = makeScreen<BrowserScreen>(gfx, input, "browser", "/");
-  if (browser) {
-    push(std::move(browser));
+  if (!browser) {
+    return false;
   }
+  push(std::move(browser));
+  return true;
 }
 
-void ScreenManager::goToSettings() {
+bool ScreenManager::goToSettings() {
   LOG_INF("SCR", "Settings");
   auto settingsScreen = makeScreen<SettingsScreen>(gfx, input, "settings");
-  if (settingsScreen) {
-    push(std::move(settingsScreen));
+  if (!settingsScreen) {
+    return false;
   }
+  push(std::move(settingsScreen));
+  return true;
 }
 
 void ScreenManager::goToFirmwareUpdate(const bool recovery) {
@@ -150,12 +156,14 @@ void ScreenManager::goToFirmwareUpdate(const bool recovery) {
   }
 }
 
-void ScreenManager::goToWifiFileTransfer() {
+bool ScreenManager::goToWifiFileTransfer() {
   LOG_INF("SCR", "Wi-Fi file transfer");
   auto wifiList = makeScreen<WifiListScreen>(gfx, input, "wifi");
-  if (wifiList) {
-    push(std::move(wifiList));
+  if (!wifiList) {
+    return false;
   }
+  push(std::move(wifiList));
+  return true;
 }
 
 void ScreenManager::showMessage(const char* text) {

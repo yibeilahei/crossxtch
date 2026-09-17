@@ -30,11 +30,11 @@ class ScreenManager {
   // from a screen pushed two levels deep) without them ever resuming.
   void pop(int levels = 1);
   void goHome();
-  void goToReader(const char* path);
-  void goToBrowser();
-  void goToSettings();
+  bool goToReader(const char* path);
+  bool goToBrowser();
+  bool goToSettings();
   void goToFirmwareUpdate(bool recovery = false);
-  void goToWifiFileTransfer();
+  bool goToWifiFileTransfer();
   void showMessage(const char* text);
 
   bool isReader() const { return current && current->isReader(); }

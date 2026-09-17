@@ -1,13 +1,18 @@
 #include "ChapterSelectionScreen.h"
 
+#include <EpdFontFamily.h>
 #include <Gfx.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
+#include "core/ReadingFont.h"
 #include "core/UiList.h"
+#include "core/UiText.h"
 #include "core/fontIds.h"
 #include "screens/PageJumpScreen.h"
 #include "screens/ReaderScreen.h"
@@ -27,6 +32,24 @@ ChapterSelectionScreen::ChapterSelectionScreen(Gfx& gfx, MappedInput& input, Rea
       break;
     }
   }
+}
+
+void ChapterSelectionScreen::onEnter() {
+  Screen::onEnter();
+  face = reader.cjkFont();
+  if (!face) {
+    if (ReadingFont::loadUi(owned)) {
+      face = &owned;
+    } else {
+      LOG_INF("CH", "No UI font (%s)", owned.lastError());
+    }
+  }
+}
+
+void ChapterSelectionScreen::onExit() {
+  owned.close();
+  face = nullptr;
+  Screen::onExit();
 }
 
 void ChapterSelectionScreen::activate() {
@@ -62,7 +85,7 @@ void ChapterSelectionScreen::loop() {
 
 void ChapterSelectionScreen::render() {
   gfx.clear(false);
-  gfx.drawCenteredText(FONT_UI_BOLD, 8, "Chapters");
+  gfx.drawCenteredText(FONT_UI_BOLD, 8, uiText::chapters);
 
   const int rowH = gfx.lineHeight(FONT_UI) + 8;
   const int top = 40;
@@ -70,21 +93,44 @@ void ChapterSelectionScreen::render() {
   const int count = static_cast<int>(chapters.size()) + 1;
   ui::followWindow(window, index, rows);
   const int last = std::min(window + rows, count);
-  char label[112];
-  for (int i = window; i < last; ++i) {
+  char label[192];
+  auto fillLabel = [&](const int i) {
     if (i == 0) {
-      snprintf(label, sizeof(label), "Go to page (%lu / %u)", static_cast<unsigned long>(currentPage + 1),
-               pageCount);
+      snprintf(label, sizeof(label), uiText::goToPageRange, static_cast<unsigned long>(currentPage + 1), pageCount);
     } else {
       const xtch::ChapterInfo& chapter = chapters[static_cast<size_t>(i - 1)];
       if (chapter.name.empty()) {
-        snprintf(label, sizeof(label), "Chapter %d (p%u-%u)", i, chapter.startPage + 1, chapter.endPage + 1);
+        snprintf(label, sizeof(label), uiText::chapterN, i, chapter.startPage + 1, chapter.endPage + 1);
       } else {
-        snprintf(label, sizeof(label), "%s (p%u-%u)", chapter.name.c_str(), chapter.startPage + 1,
+        snprintf(label, sizeof(label), uiText::chapterNamed, chapter.name.c_str(), chapter.startPage + 1,
                  chapter.endPage + 1);
       }
     }
-    ui::drawRow(gfx, top + (i - window) * rowH, rowH, label, i == index);
+    label[utf8SafeTruncateBuffer(label, static_cast<int>(strlen(label)))] = '\0';
+  };
+  if (face && face->loaded()) {
+    const EpdFontFamily* ui = gfx.font(FONT_UI);
+    uint16_t ids[192];
+    uint16_t n = 0;
+    for (int i = window; i < last; ++i) {
+      fillLabel(i);
+      const unsigned char* p = reinterpret_cast<const unsigned char*>(label);
+      uint32_t cp = 0;
+      while ((cp = utf8NextCodepoint(&p)) && n < 192) {
+        if (ui && ui->hasCodepoint(cp)) {
+          continue;
+        }
+        const uint16_t id = face->glyphId(cp);
+        if (id != 0xFFFF) {
+          ids[n++] = id;
+        }
+      }
+    }
+    face->prewarm(ids, n, false);
+  }
+  for (int i = window; i < last; ++i) {
+    fillLabel(i);
+    ui::drawRow(gfx, top + (i - window) * rowH, rowH, label, i == index, face);
   }
   presentUi();
 }

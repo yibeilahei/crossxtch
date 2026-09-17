@@ -17,7 +17,9 @@
 #include "core/ScreenManager.h"
 #include "core/MappedInput.h"
 #include "core/Power.h"
+#include "core/ReadingFont.h"
 #include "core/Settings.h"
+#include "core/UiText.h"
 #include "core/fontIds.h"
 #include "network/WifiCredentialStore.h"
 
@@ -31,8 +33,10 @@ ScreenManager screenManager(gfx, mappedInput);
 
 EpdFont ui12RegularFont(&ubuntu_12_medium);
 EpdFont ui12BoldFont(&ubuntu_12_bold);
+EpdFont uiJpFont(&jp_12);
 EpdFontFamily ui12Family(&ui12RegularFont, &ui12BoldFont);
 EpdFontFamily ui12BoldFamily(&ui12BoldFont, &ui12BoldFont);
+EpdFontFamily uiJpFamily(&uiJpFont);
 
 static const char* wakeupName(HalGPIO::WakeupReason reason) {
   switch (reason) {
@@ -53,6 +57,7 @@ static void setupDisplayAndFonts() {
   gfx.begin();
   gfx.insertFont(FONT_UI, &ui12Family);
   gfx.insertFont(FONT_UI_BOLD, &ui12BoldFamily);
+  gfx.setFallbackFont(&uiJpFamily);
 }
 
 void setup() {
@@ -82,13 +87,15 @@ void setup() {
   if (!Storage.begin()) {
     LOG_ERR("MAIN", "SD init failed");
     setupDisplayAndFonts();
-    screenManager.showMessage("SD card error");
+    screenManager.showMessage(uiText::sdCardError);
     return;
   }
   LOG_INF("MAIN", "SD ready");
 
   HalSystem::checkPanic();
   settings.load();
+  uiText::apply();
+  ReadingFont::migrate();
   wifiCredentials.load();
   Frontlight.begin(0, 0, false);
 

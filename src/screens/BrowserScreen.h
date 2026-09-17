@@ -1,5 +1,7 @@
 #pragma once
 
+#include <XgfFont.h>
+
 #include <string>
 #include <vector>
 
@@ -16,14 +18,18 @@ class BrowserScreen final : public Screen {
   int window = 0;
   uint8_t shownMinute = 255;
   Mode mode = Mode::Books;
+  XgfFont cjk;
 
   void load();
   void activate();
   void goUp();
+  void loadCjk();
 
  public:
   BrowserScreen(Gfx& gfx, MappedInput& input, const char* initialPath = "/", Mode mode = Mode::Books);
   void onEnter() override;
+  void onExit() override;
+  void onResume() override;
   void loop() override;
   void render() override;
   bool blocksSleep() const override { return mode == Mode::Firmware; }
