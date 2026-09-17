@@ -23,6 +23,9 @@ class HalClock {
   // True if an RTC is present on this device
   bool isAvailable() const { return _available; }
 
+  // Full UTC wall time from the RTC. False if missing or oscillator stopped.
+  bool nowUtc(Rtc::DateTime& dt) const;
+
   // Get current hour (0-23) and minute (0-59) in UTC (RTC time).
   // Returns false if RTC is not available.
   bool getTime(uint8_t& hour, uint8_t& minute) const;

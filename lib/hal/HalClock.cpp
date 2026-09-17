@@ -12,6 +12,13 @@ void HalClock::begin() {
   LOG_INF("CLK", _available ? "SDK RTC found" : "RTC not found");
 }
 
+bool HalClock::nowUtc(Rtc::DateTime& dt) const {
+  if (!_available) {
+    return false;
+  }
+  return _sdkRtc.now(dt);
+}
+
 bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
   if (!_available) return false;
 
@@ -106,13 +113,16 @@ bool HalClock::syncFromNTP() {
         _hasCachedTime = true;
         LOG_INF("CLK", "RTC set to %04u-%02u-%02u %02u:%02u:%02u UTC", dt.year, dt.month, dt.day, dt.hour, dt.minute,
                 dt.second);
+        esp_sntp_stop();
         return true;
       }
+      esp_sntp_stop();
       return false;
     }
     delay(100);
   }
 
   LOG_ERR("CLK", "NTP sync timed out");
+  esp_sntp_stop();
   return false;
 }
