@@ -87,6 +87,8 @@ class HalDisplay {
   // displayBuffer(HALF); FAST fallback keeps the OEM differential base waveform
   // ("AA-pre-BW(mid)"). Other panels display normally with `fallback` mode.
   void displayGrayscaleBase(RefreshMode fallback = HALF_REFRESH, bool turnOffScreen = false);
+  void startGrayscaleBase(RefreshMode fallback = HALF_REFRESH, bool turnOffScreen = false);
+  void finishGrayscaleBase();
 
   void copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer);
   void copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer);
@@ -94,6 +96,8 @@ class HalDisplay {
   void cleanupGrayscaleBuffers(const uint8_t* bwBuffer);
 
   void displayGrayBuffer(bool turnOffScreen = false);
+  void startGrayBuffer(bool turnOffScreen = false);
+  void finishGrayBuffer();
 
   // Tiled grayscale: stream one band of a plane (lsbPlane selects LSB/MSB RAM)
   // straight to the controller; supportsStripGrayscale() gates the path. See

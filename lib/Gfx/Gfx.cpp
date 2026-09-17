@@ -40,6 +40,36 @@ const EpdFontFamily* Gfx::font(const int id) const {
   return nullptr;
 }
 
+void Gfx::setFallbackFont(const EpdFontFamily* family) { fallbackFont = family; }
+
+const EpdFontFamily* Gfx::faceFor(const int fontId, const uint32_t cp, const EpdFontFamily::Style style) const {
+  const EpdFontFamily* family = font(fontId);
+  if (family && family->hasCodepoint(cp, style)) {
+    return family;
+  }
+  if (fallbackFont && fallbackFont->hasCodepoint(cp, style)) {
+    return fallbackFont;
+  }
+  return family;
+}
+
+void Gfx::blitGlyph(const EpdFontData* data, const EpdGlyph* glyph, const int gx0, const int gy0, const bool black) {
+  if (!data || !glyph || glyph->width <= 0 || glyph->height <= 0) {
+    return;
+  }
+  const uint8_t* bitmap = &data->bitmap[glyph->dataOffset];
+  int pixelPosition = 0;
+  for (int gy = 0; gy < glyph->height; ++gy) {
+    for (int gx = 0; gx < glyph->width; ++gx, ++pixelPosition) {
+      const uint8_t byte = bitmap[pixelPosition >> 3];
+      const uint8_t bit = static_cast<uint8_t>(7 - (pixelPosition & 7));
+      if ((byte >> bit) & 1) {
+        drawPixel(gx0 + gx, gy0 + gy, black);
+      }
+    }
+  }
+}
+
 void Gfx::toPanel(const int x, const int y, int& phyX, int& phyY) const {
   // Portrait logical (W=panelH, H=panelW) → panel, 90° clockwise.
   phyX = y;
@@ -106,6 +136,7 @@ void Gfx::drawText(const int fontId, const int x, const int y, const char* text,
   int cursorX = x;
   int32_t prevAdvanceFP = 0;
   uint32_t prevCp = 0;
+  const EpdFontFamily* prevFace = nullptr;
   const char* cursor = text;
   uint32_t cp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&cursor)))) {
@@ -113,28 +144,34 @@ void Gfx::drawText(const int fontId, const int x, const int y, const char* text,
       continue;
     }
     cp = family->applyLigatures(cp, cursor, style);
+    const EpdFontFamily* face = faceFor(fontId, cp, style);
     if (prevCp != 0) {
-      cursorX += fp4::toPixel(prevAdvanceFP + family->getKerning(prevCp, cp, style));
+      const int8_t kern = (face == prevFace && face) ? face->getKerning(prevCp, cp, style) : 0;
+      cursorX += fp4::toPixel(prevAdvanceFP + kern);
     }
-    const EpdGlyph* glyph = family->getGlyph(cp, style);
+    const EpdGlyph* glyph = face ? face->getGlyph(cp, style) : nullptr;
     prevAdvanceFP = glyph ? glyph->advanceX : 0;
-    if (glyph && glyph->width > 0 && glyph->height > 0) {
-      const uint8_t* bitmap = &family->getData(style)->bitmap[glyph->dataOffset];
-      const int gx0 = cursorX + glyph->left;
-      const int gy0 = yPos - glyph->top;
-      int pixelPosition = 0;
-      for (int gy = 0; gy < glyph->height; ++gy) {
-        for (int gx = 0; gx < glyph->width; ++gx, ++pixelPosition) {
-          const uint8_t byte = bitmap[pixelPosition >> 3];
-          const uint8_t bit = static_cast<uint8_t>(7 - (pixelPosition & 7));
-          if ((byte >> bit) & 1) {
-            drawPixel(gx0 + gx, gy0 + gy, black);
-          }
-        }
-      }
+    if (glyph) {
+      blitGlyph(face->getData(style), glyph, cursorX + glyph->left, yPos - glyph->top, black);
     }
     prevCp = cp;
+    prevFace = face;
   }
+}
+
+int Gfx::drawCodepoint(const int fontId, const int x, const int y, const uint32_t cp, const bool black,
+                       const EpdFontFamily::Style style) {
+  const EpdFontFamily* family = font(fontId);
+  const EpdFontFamily* face = faceFor(fontId, cp, style);
+  if (!family || !face || !face->hasCodepoint(cp, style)) {
+    return 0;
+  }
+  const EpdGlyph* glyph = face->getGlyph(cp, style);
+  if (!glyph) {
+    return 0;
+  }
+  blitGlyph(face->getData(style), glyph, x + glyph->left, y + family->getData(style)->ascender - glyph->top, black);
+  return fp4::toPixel(glyph->advanceX);
 }
 
 void Gfx::drawCenteredText(const int fontId, const int y, const char* text, const bool black,
@@ -148,10 +185,49 @@ int Gfx::textWidth(const int fontId, const char* text, const EpdFontFamily::Styl
   if (!family || !text) {
     return 0;
   }
-  int w = 0;
-  int h = 0;
-  family->getTextDimensions(text, &w, &h, style);
-  return w;
+  int minX = 0;
+  int maxX = 0;
+  bool any = false;
+  int lastBaseX = 0;
+  int32_t prevAdvanceFP = 0;
+  uint32_t prevCp = 0;
+  const EpdFontFamily* prevFace = nullptr;
+  const char* cursor = text;
+  uint32_t cp = 0;
+  while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&cursor)))) {
+    if (utf8IsCombiningMark(cp)) {
+      continue;
+    }
+    cp = family->applyLigatures(cp, cursor, style);
+    const EpdFontFamily* face = faceFor(fontId, cp, style);
+    if (prevCp != 0) {
+      const int8_t kern = (face == prevFace && face) ? face->getKerning(prevCp, cp, style) : 0;
+      lastBaseX += fp4::toPixel(prevAdvanceFP + kern);
+    }
+    const EpdGlyph* glyph = face ? face->getGlyph(cp, style) : nullptr;
+    if (glyph) {
+      const int gx0 = lastBaseX + glyph->left;
+      const int gx1 = gx0 + glyph->width;
+      if (!any) {
+        minX = gx0;
+        maxX = gx1;
+        any = true;
+      } else {
+        if (gx0 < minX) {
+          minX = gx0;
+        }
+        if (gx1 > maxX) {
+          maxX = gx1;
+        }
+      }
+      prevAdvanceFP = glyph->advanceX;
+    } else {
+      prevAdvanceFP = 0;
+    }
+    prevCp = cp;
+    prevFace = face;
+  }
+  return any ? maxX - minX : 0;
 }
 
 int Gfx::lineHeight(const int fontId) const {
@@ -166,6 +242,10 @@ void Gfx::present(const HalDisplay::RefreshMode mode) { panel.displayBuffer(mode
 
 void Gfx::displayGrayscaleBase(const HalDisplay::RefreshMode fallback) { panel.displayGrayscaleBase(fallback); }
 
+void Gfx::startGrayscaleBase(const HalDisplay::RefreshMode fallback) { panel.startGrayscaleBase(fallback); }
+
+void Gfx::finishGrayscaleBase() { panel.finishGrayscaleBase(); }
+
 void Gfx::preconditionGrayscale() { panel.preconditionGrayscale(); }
 
 void Gfx::copyGrayscaleLsbBuffers() { panel.copyGrayscaleLsbBuffers(fb); }
@@ -173,6 +253,10 @@ void Gfx::copyGrayscaleLsbBuffers() { panel.copyGrayscaleLsbBuffers(fb); }
 void Gfx::copyGrayscaleMsbBuffers() { panel.copyGrayscaleMsbBuffers(fb); }
 
 void Gfx::displayGrayBuffer() { panel.displayGrayBuffer(); }
+
+void Gfx::startGrayBuffer() { panel.startGrayBuffer(); }
+
+void Gfx::finishGrayBuffer() { panel.finishGrayBuffer(); }
 
 void Gfx::cleanupGrayscaleBuffers() { panel.cleanupGrayscaleBuffers(fb); }
 
