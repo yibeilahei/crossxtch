@@ -1,0 +1,13 @@
+{
+  "name": "EInkDisplay",
+  "version": "2.0.0",
+  "description": "Vendored FreeInkDisplay from freeink-sdk, with local start/finish grayscale overlap APIs. Do not edit the submodule copy.",
+  "keywords": "epaper, eink, ssd1677, uc8253, display",
+  "authors": [
+    {"name": "FreeInk SDK Contributors"},
+    {"name": "CidVonHighwind", "url": "https://github.com/CidVonHighwind", "maintainer": false}
+  ],
+  "dependencies": {},
+  "platforms": "espressif32",
+  "frameworks": ["arduino"]
+}
