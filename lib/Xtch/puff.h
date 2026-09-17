@@ -56,6 +56,18 @@ int puff_stream(unsigned char *dest, unsigned long *destlen,
                 puff_refill_fn refill, void *user,
                 unsigned char *inbuf, unsigned long inbufcap);
 
+/* Write uncompressed bytes. Return 0 on success, non-zero on I/O error. */
+typedef int (*puff_flush_fn)(const unsigned char *buf, unsigned long n, void *user);
+
+/* Inflate to a 32 KB history window, flushing older bytes through flush().
+ * windowcap must be 32768 (DEFLATE max match distance). *outcnt is set to
+ * the full uncompressed size on success. */
+int puff_stream_out(puff_refill_fn refill, void *in_user,
+                    unsigned char *inbuf, unsigned long inbufcap,
+                    unsigned char *window, unsigned long windowcap,
+                    puff_flush_fn flush, void *out_user,
+                    unsigned long *outcnt);
+
 #ifdef __cplusplus
 }
 #endif

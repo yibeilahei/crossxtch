@@ -120,9 +120,69 @@ struct state {
     puff_refill_fn refill;
     void *refill_user;
 
+    /* streaming output: 32 KB ring + flush of bytes older than the window */
+    puff_flush_fn flush;
+    void *flush_user;
+    unsigned long flushed;
+
     /* input limit error return state for bits() and decode() */
     jmp_buf env;
 };
+
+local int out_flush_old(struct state *s)
+{
+    unsigned long keep, can;
+
+    if (s->flush == NULL)
+        return 0;
+    keep = s->outlen;
+    /* Flush the slot we are about to overwrite (byte at outcnt - keep). */
+    can = s->outcnt >= keep ? s->outcnt - keep + 1 : 0;
+    while (s->flushed < can) {
+        unsigned long idx = s->flushed % s->outlen;
+        unsigned long n = s->outlen - idx;
+        if (n > can - s->flushed)
+            n = can - s->flushed;
+        if (s->flush(s->out + idx, n, s->flush_user) != 0)
+            return 1;
+        s->flushed += n;
+    }
+    return 0;
+}
+
+local int out_put(struct state *s, unsigned char b)
+{
+    if (s->flush != NULL) {
+        if (out_flush_old(s))
+            return 1;
+        s->out[s->outcnt % s->outlen] = b;
+        s->outcnt++;
+        return 0;
+    }
+    if (s->out != NIL) {
+        if (s->outcnt == s->outlen)
+            return 1;
+        s->out[s->outcnt] = b;
+    }
+    s->outcnt++;
+    return 0;
+}
+
+local int out_finish(struct state *s)
+{
+    if (s->flush == NULL)
+        return 0;
+    while (s->flushed < s->outcnt) {
+        unsigned long idx = s->flushed % s->outlen;
+        unsigned long n = s->outlen - idx;
+        if (n > s->outcnt - s->flushed)
+            n = s->outcnt - s->flushed;
+        if (s->flush(s->out + idx, n, s->flush_user) != 0)
+            return 1;
+        s->flushed += n;
+    }
+    return 0;
+}
 
 /* Slide any unread bytes to the start of inbuf and append more from refill.
    Returns 1 if at least one new byte arrived, 0 on EOF/error/no-stream. */
@@ -217,19 +277,26 @@ local int stored(struct state *s)
 
     /* copy len bytes from in to out, refilling the window as needed so a
        stored block larger than inbuf still copies */
-    if (s->out != NIL && s->outcnt + len > s->outlen)
+    if (s->flush == NULL && s->out != NIL && s->outcnt + len > s->outlen)
         return 1;                               /* not enough output space */
     while (len) {
         unsigned long n;
+        unsigned long k;
 
         if (s->incnt == s->inlen && !refill_in(s))
             return 2;                           /* not enough input */
         n = s->inlen - s->incnt;
         if (n > len)
             n = len;
-        if (s->out != NIL)
+        if (s->flush != NULL) {
+            for (k = 0; k < n; k++)
+                if (out_put(s, s->in[s->incnt + k]))
+                    return 1;
+        }
+        else if (s->out != NIL)
             memcpy(s->out + s->outcnt, s->in + s->incnt, n);
-        s->outcnt += n;
+        if (s->flush == NULL)
+            s->outcnt += n;
         s->incnt += n;
         len -= n;
     }
@@ -503,13 +570,8 @@ local int codes(struct state *s,
         if (symbol < 0)
             return symbol;              /* invalid symbol */
         if (symbol < 256) {             /* literal: symbol is the byte */
-            /* write out the literal */
-            if (s->out != NIL) {
-                if (s->outcnt == s->outlen)
-                    return 1;
-                s->out[s->outcnt] = symbol;
-            }
-            s->outcnt++;
+            if (out_put(s, (unsigned char)symbol))
+                return 1;
         }
         else if (symbol > 256) {        /* length */
             /* get and compute length */
@@ -529,7 +591,14 @@ local int codes(struct state *s,
 #endif
 
             /* copy length bytes from distance bytes back */
-            if (s->out != NIL) {
+            if (s->flush != NULL) {
+                while (len--) {
+                    unsigned char b = s->out[(s->outcnt - dist) % s->outlen];
+                    if (out_put(s, b))
+                        return 1;
+                }
+            }
+            else if (s->out != NIL) {
                 if (s->outcnt + len > s->outlen)
                     return 1;
                 while (len--) {
@@ -856,6 +925,9 @@ int puff(unsigned char *dest,           /* pointer to destination pointer */
     s.incap = 0;
     s.refill = 0;
     s.refill_user = 0;
+    s.flush = 0;
+    s.flush_user = 0;
+    s.flushed = 0;
 
     /* return if bits() or decode() tries to read past available input */
     if (setjmp(s.env) != 0)             /* if came back here via longjmp() */
@@ -911,6 +983,9 @@ int puff_stream(unsigned char *dest,
     s.incap = inbufcap;
     s.refill = refill;
     s.refill_user = user;
+    s.flush = 0;
+    s.flush_user = 0;
+    s.flushed = 0;
 
     if (setjmp(s.env) != 0)
         err = 2;
@@ -932,5 +1007,60 @@ int puff_stream(unsigned char *dest,
 
     if (err <= 0)
         *destlen = s.outcnt;
+    return err;
+}
+
+int puff_stream_out(puff_refill_fn refill, void *in_user,
+                    unsigned char *inbuf, unsigned long inbufcap,
+                    unsigned char *window, unsigned long windowcap,
+                    puff_flush_fn flush, void *out_user,
+                    unsigned long *outcnt)
+{
+    struct state s;
+    int last, type;
+    int err;
+
+    if (refill == 0 || inbuf == 0 || inbufcap == 0 || window == 0 ||
+        windowcap == 0 || flush == 0 || outcnt == 0)
+        return 2;
+
+    s.out = window;
+    s.outlen = windowcap;
+    s.outcnt = 0;
+    s.in = inbuf;
+    s.inlen = 0;
+    s.incnt = 0;
+    s.bitbuf = 0;
+    s.bitcnt = 0;
+    s.inbuf = inbuf;
+    s.incap = inbufcap;
+    s.refill = refill;
+    s.refill_user = in_user;
+    s.flush = flush;
+    s.flush_user = out_user;
+    s.flushed = 0;
+
+    if (setjmp(s.env) != 0)
+        err = 2;
+    else {
+        do {
+            last = bits(&s, 1);
+            type = bits(&s, 2);
+            err = type == 0 ?
+                    stored(&s) :
+                    (type == 1 ?
+                        fixed(&s) :
+                        (type == 2 ?
+                            dynamic(&s) :
+                            -1));
+            if (err != 0)
+                break;
+        } while (!last);
+    }
+
+    if (err <= 0 && out_finish(&s) != 0)
+        err = 1;
+    if (err <= 0)
+        *outcnt = s.outcnt;
     return err;
 }
