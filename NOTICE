@@ -6,4 +6,7 @@ Copied files retain their original copyright.
   CrossPoint Reader, MIT License, Copyright (c) 2025 Dave Allie.
 - Ubuntu font binaries under lib/EpdFont/builtinFonts/ are generated from
   Ubuntu (UFL) and Noto (OFL) sources, same as in the CrossPoint tree.
+- jp_12 is generated from Noto Sans JP Medium (SIL Open Font License 1.1),
+  covering Jōyō kanji, kana, and CJK punctuation for UI text. Extra simplified
+  Chinese UI ideographs are taken from Noto Sans SC Medium (OFL 1.1).
 - freeink-sdk is a sibling dependency (MIT).
