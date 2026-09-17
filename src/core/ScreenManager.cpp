@@ -6,6 +6,7 @@
 
 #include "screens/BrowserScreen.h"
 #include "screens/HomeScreen.h"
+#include "screens/LanguageScreen.h"
 #include "screens/MessageScreen.h"
 #include "screens/ReaderScreen.h"
 #include "screens/SettingsScreen.h"
@@ -110,6 +111,14 @@ void ScreenManager::goHome() {
   auto home = makeScreen<HomeScreen>(gfx, input, "home");
   if (home) {
     replace(std::move(home));
+  }
+}
+
+void ScreenManager::goToLanguageSetup() {
+  LOG_INF("SCR", "Language setup");
+  auto language = makeScreen<LanguageScreen>(gfx, input, "language", true);
+  if (language) {
+    replace(std::move(language));
   }
 }
 

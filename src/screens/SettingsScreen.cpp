@@ -9,9 +9,15 @@
 
 #include <cstdio>
 
+#include <Memory.h>
+
+#include "core/BookCache.h"
 #include "core/Settings.h"
 #include "core/UiList.h"
+#include "core/UiText.h"
 #include "core/fontIds.h"
+#include "screens/FontsScreen.h"
+#include "screens/LanguageScreen.h"
 
 #ifndef CROSSXTCH_VERSION
 #define CROSSXTCH_VERSION "dev"
@@ -20,33 +26,30 @@
 namespace {
 // Tilt page-turn is only offered on boards with the QMI8658 IMU (X3).
 bool hasTilt() { return halTiltSensor.isAvailable(); }
-int itemCount() { return hasTilt() ? 7 : 5; }
-int tiltIndex() { return 3; }
-int gyroIndex() { return 4; }
-int firmwareIndex() { return hasTilt() ? 5 : 3; }
+constexpr int kLanguage = 0;
+constexpr int kSleep = 1;
+constexpr int kRefresh = 2;
+constexpr int kNight = 3;
+constexpr int kFont = 4;
+int itemCount() { return hasTilt() ? 10 : 8; }
+int tiltIndex() { return 5; }
+int gyroIndex() { return 6; }
+int cacheIndex() { return hasTilt() ? 7 : 5; }
+int firmwareIndex() { return hasTilt() ? 8 : 6; }
 
 void formatTrueSleep(char* out, size_t outSize) {
-  switch (settings.trueSleepMinutes) {
-    case Settings::kSleep5Min:
-      snprintf(out, outSize, "Power Off: 5 min");
-      break;
-    case Settings::kSleep10Min:
-      snprintf(out, outSize, "Power Off: 10 min");
-      break;
-    case Settings::kSleep15Min:
-      snprintf(out, outSize, "Power Off: 15 min");
-      break;
-    default:
-      snprintf(out, outSize, "Power Off: none");
-      break;
+  if (settings.trueSleepMinutes == Settings::kSleepNone) {
+    snprintf(out, outSize, "%s", uiText::powerOffNone);
+  } else {
+    snprintf(out, outSize, uiText::powerOffMin, settings.trueSleepMinutes);
   }
 }
 
 void formatGyroAutoOff(char* out, size_t outSize) {
   if (settings.gyroAutoOffSeconds == 0) {
-    snprintf(out, outSize, "Gyro auto-off: none");
+    snprintf(out, outSize, "%s", uiText::gyroAutoOffNone);
   } else {
-    snprintf(out, outSize, "Gyro auto-off: %u sec", settings.gyroAutoOffSeconds);
+    snprintf(out, outSize, uiText::gyroAutoOffSec, settings.gyroAutoOffSeconds);
   }
 }
 
@@ -84,19 +87,14 @@ void bumpTrueSleep() {
   }
 }
 
+char refreshBuf[48];
+
 const char* refreshLabel() {
-  switch (settings.refreshEveryNPages) {
-    case 1:
-      return "Refresh: every page";
-    case 10:
-      return "Refresh: every 10 pages";
-    case 15:
-      return "Refresh: every 15 pages";
-    case 20:
-      return "Refresh: every 20 pages";
-    default:
-      return "Refresh: every 5 pages";
+  if (settings.refreshEveryNPages == 1) {
+    return uiText::refreshEveryPage;
   }
+  snprintf(refreshBuf, sizeof(refreshBuf), uiText::refreshEveryN, settings.refreshEveryNPages);
+  return refreshBuf;
 }
 
 void bumpRefresh() {
@@ -132,26 +130,52 @@ void SettingsScreen::loop() {
     requestUpdate();
   }
   if (ui::applyDelta(index, input.consumeNavigationDelta(), itemCount())) {
+    cacheArmed = false;
     requestUpdate();
   } else if (input.wasReleased(MappedInput::Button::Confirm)) {
-    if (index == 0) {
+    if (index == kLanguage) {
+      auto screen = makeUniqueNoThrow<LanguageScreen>(gfx, input, false);
+      if (!screen) {
+        LOG_ERR("SET", "OOM: language");
+        return;
+      }
+      push(std::move(screen));
+      return;
+    } else if (index == kSleep) {
       bumpTrueSleep();
-      char sleepLog[32];
+      char sleepLog[48];
       formatTrueSleep(sleepLog, sizeof(sleepLog));
       LOG_INF("SET", "%s", sleepLog);
-    } else if (index == 1) {
+    } else if (index == kRefresh) {
       bumpRefresh();
       LOG_INF("SET", "%s", refreshLabel());
-    } else if (index == 2) {
+    } else if (index == kNight) {
       settings.nightMode = settings.nightMode ? 0 : 1;
       display.setInverted(settings.nightMode != 0);
       LOG_INF("SET", "Night mode %s", settings.nightMode ? "on" : "off");
+    } else if (index == kFont) {
+      auto screen = makeUniqueNoThrow<FontsScreen>(gfx, input);
+      if (!screen) {
+        LOG_ERR("SET", "OOM: fonts");
+        return;
+      }
+      push(std::move(screen));
+      return;
     } else if (hasTilt() && index == tiltIndex()) {
       settings.tiltPageTurn = settings.tiltPageTurn ? 0 : 1;
       LOG_INF("SET", "Tilt page turn %s", settings.tiltPageTurn ? "on" : "off");
     } else if (hasTilt() && index == gyroIndex()) {
       bumpGyroAutoOff();
       LOG_INF("SET", "Gyro auto-off %u sec", settings.gyroAutoOffSeconds);
+    } else if (index == cacheIndex()) {
+      if (!cacheArmed) {
+        cacheArmed = true;
+        cacheCleared = false;
+      } else {
+        BookCache::clearAll();
+        cacheArmed = false;
+        cacheCleared = true;
+      }
     } else if (index == firmwareIndex()) {
       settings.save();
       goToFirmwareUpdate();
@@ -182,27 +206,35 @@ void SettingsScreen::render() {
   snprintf(bat, sizeof(bat), "%u%%", static_cast<unsigned>(powerManager.getBatteryPercentage()));
   gfx.drawText(FONT_UI, gfx.width() - gfx.textWidth(FONT_UI, bat) - 12, 8, bat);
 
-  char deep[32];
-  char night[32];
-  char tilt[32];
-  char gyro[32];
+  char lang[48];
+  char deep[48];
+  char night[48];
+  char tilt[48];
+  char gyro[48];
+  snprintf(lang, sizeof(lang), uiText::language, uiText::languageName);
   formatTrueSleep(deep, sizeof(deep));
-  snprintf(night, sizeof(night), "Night mode: %s", settings.nightMode ? "on" : "off");
-  snprintf(tilt, sizeof(tilt), "Tilt page turn: %s", settings.tiltPageTurn ? "on" : "off");
+  snprintf(night, sizeof(night), uiText::nightMode, settings.nightMode ? uiText::on : uiText::off);
+  snprintf(tilt, sizeof(tilt), uiText::tiltPageTurn, settings.tiltPageTurn ? uiText::on : uiText::off);
   formatGyroAutoOff(gyro, sizeof(gyro));
 
-  const char* labels[7];
-  labels[0] = deep;
-  labels[1] = refreshLabel();
-  labels[2] = night;
+  const char* cacheLabel =
+      cacheArmed ? uiText::clearCacheConfirm : (cacheCleared ? uiText::cacheCleared : uiText::clearCache);
+  const char* labels[10];
+  labels[0] = lang;
+  labels[1] = deep;
+  labels[2] = refreshLabel();
+  labels[3] = night;
+  labels[4] = uiText::readingFont;
   if (hasTilt()) {
-    labels[3] = tilt;
-    labels[4] = gyro;
-    labels[5] = "Update firmware";
-    labels[6] = "Back";
+    labels[5] = tilt;
+    labels[6] = gyro;
+    labels[7] = cacheLabel;
+    labels[8] = uiText::updateFirmware;
+    labels[9] = uiText::back;
   } else {
-    labels[3] = "Update firmware";
-    labels[4] = "Back";
+    labels[5] = cacheLabel;
+    labels[6] = uiText::updateFirmware;
+    labels[7] = uiText::back;
   }
 
   const int rowH = gfx.lineHeight(FONT_UI) + 10;

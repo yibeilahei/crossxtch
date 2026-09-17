@@ -136,6 +136,12 @@ void setup() {
     return;
   }
 
+  if (!settings.languageChosen()) {
+    LOG_INF("MAIN", "Language not chosen");
+    screenManager.goToLanguageSetup();
+    return;
+  }
+
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton && settings.lastBookPath[0] != '\0' &&
       Storage.exists(settings.lastBookPath)) {
     LOG_INF("MAIN", "Resume %s", settings.lastBookPath);
