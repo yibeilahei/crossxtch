@@ -13,7 +13,10 @@
 #include <cstdio>
 #include <cstring>
 #include <new>
+#include <vector>
 
+#include "core/BookCache.h"
+#include "core/ReadingFont.h"
 #include "core/Settings.h"
 #include "network/html/FileManagerPage.h"
 
@@ -69,12 +72,65 @@ bool isProtectedPath(const char* path) {
 // WebServer::handleClient() sets a 5s socket timeout before parsing. That's
 // too tight for a book upload: a Wi-Fi hiccup or a blocking SD write on the
 // single-core C3 makes client.readBytes() return 0, the raw parser aborts,
-// and Chrome logs net::ERR_CONNECTION_RESET. 60s is per-chunk, not overall.
-constexpr uint32_t kUploadSocketTimeoutMs = 60000;
+// and Chrome logs net::ERR_CONNECTION_RESET. Per-chunk, not overall. Keep
+// this short enough that a dead peer unblocks the UI (Back) within seconds.
+constexpr uint32_t kUploadSocketTimeoutMs = 20000;
+constexpr uint64_t kMaxPreallocateBytes = 2ull * 1024 * 1024;
+constexpr size_t kMaxListEntries = 256;
 
 void pumpNetwork() {
   feedLoopWDT();
   yield();
+}
+
+// Removes directory contents (including hidden files the file list hides), then
+// the caller rmdirs `path`. Collects names first so we never mutate a directory
+// while iterating it. Recurses only for nested folders.
+bool deleteDirContents(const char* path) {
+  std::vector<std::string> files;
+  std::vector<std::string> dirs;
+  files.reserve(32);
+  dirs.reserve(8);
+  {
+    HalFile dir = Storage.open(path);
+    if (!dir || !dir.isDirectory()) {
+      return false;
+    }
+    auto name = makeUniqueNoThrow<char[]>(HalFile::kMaxNameBytes);
+    if (!name) {
+      LOG_ERR("XFER", "OOM: delete name");
+      return false;
+    }
+    for (HalFile file = dir.openNextFile(); file; file = dir.openNextFile()) {
+      if (file.getName(name.get(), HalFile::kMaxNameBytes) == 0) {
+        LOG_ERR("XFER", "Unreadable name in %s", path);
+        return false;
+      }
+      if (file.isDirectory()) {
+        dirs.emplace_back(name.get());
+      } else {
+        files.emplace_back(name.get());
+      }
+    }
+  }
+  for (const auto& name : files) {
+    pumpNetwork();
+    const std::string full = joinPath(path, name.c_str());
+    if (!Storage.remove(full.c_str())) {
+      LOG_ERR("XFER", "Failed to remove %s", full.c_str());
+      return false;
+    }
+    BookCache::removeFor(full.c_str());
+  }
+  for (const auto& name : dirs) {
+    pumpNetwork();
+    const std::string full = joinPath(path, name.c_str());
+    if (!deleteDirContents(full.c_str()) || !Storage.rmdir(full.c_str())) {
+      LOG_ERR("XFER", "Failed to remove dir %s", full.c_str());
+      return false;
+    }
+  }
+  return true;
 }
 }  // namespace
 
@@ -138,6 +194,9 @@ bool FileTransferServer::begin() {
   server->on("/api/status", HTTP_GET, [this]() { handleStatus(); });
   server->on("/api/timezone", HTTP_POST, [this]() { handleTimezone(); });
   server->on("/api/files", HTTP_GET, [this]() { handleFileList(); });
+  server->on("/api/fonts", HTTP_GET, [this]() { handleFonts(); });
+  server->on("/api/fonts/select", HTTP_POST, [this]() { handleFontSelect(); });
+  server->on("/api/fonts/delete", HTTP_POST, [this]() { handleFontDelete(); });
   server->on("/download", HTTP_GET, [this]() { handleDownload(); });
   server->on("/mkdir", HTTP_POST, [this]() { handleMkdir(); });
   server->on("/rename", HTTP_POST, [this]() { handleRename(); });
@@ -167,6 +226,7 @@ bool FileTransferServer::begin() {
 }
 
 void FileTransferServer::stop() {
+  resetUpload(true);
   if (mdnsStarted) {
     MDNS.end();
     mdnsStarted = false;
@@ -184,7 +244,7 @@ void FileTransferServer::stop() {
 }
 
 void FileTransferServer::handleClient() {
-  if (server) {
+  if (server && WiFi.status() == WL_CONNECTED) {
     server->handleClient();
   }
 }
@@ -237,8 +297,12 @@ void FileTransferServer::handleFileList() const {
   json.reserve(1024);
   json.push_back('[');
   bool first = true;
+  size_t listed = 0;
   char name[HalFile::kMaxNameBytes];
   for (HalFile file = dir.openNextFile(); file; file = dir.openNextFile()) {
+    if (listed >= kMaxListEntries) {
+      break;
+    }
     if (file.getName(name, sizeof(name)) == 0) {
       LOG_ERR("XFER", "Skipping file with unreadable name");
       continue;
@@ -250,6 +314,7 @@ void FileTransferServer::handleFileList() const {
       json.push_back(',');
     }
     first = false;
+    ++listed;
     json += "{\"name\":\"";
     appendJsonEscaped(json, name);
     json += "\",\"size\":";
@@ -295,12 +360,16 @@ void FileTransferServer::handleDownload() const {
   }
   int n;
   while ((n = file.read(buffer.get(), kChunkSize)) > 0) {
+    if (!server->client().connected()) {
+      break;
+    }
     server->client().write(buffer.get(), static_cast<size_t>(n));
+    pumpNetwork();
   }
 }
 
 void FileTransferServer::writeUploadBytes(const uint8_t* data, size_t len) {
-  if (!upload.file || !len) {
+  if (!upload.success || !upload.file || !len) {
     return;
   }
   const size_t written = upload.file.write(data, len);
@@ -308,6 +377,18 @@ void FileTransferServer::writeUploadBytes(const uint8_t* data, size_t len) {
   if (written != len) {
     LOG_ERR("XFER", "Short upload write (%u of %u)", static_cast<unsigned>(written), static_cast<unsigned>(len));
     upload.success = false;
+  }
+}
+
+void FileTransferServer::resetUpload(bool removePartial) {
+  upload.writeBufferPos = 0;
+  upload.preallocatedSize = 0;
+  const std::string path = upload.destPath;
+  const bool hadFile = static_cast<bool>(upload.file);
+  upload.file = HalFile();
+  upload.success = false;
+  if (removePartial && hadFile && !path.empty()) {
+    Storage.remove(path.c_str());
   }
 }
 
@@ -320,9 +401,7 @@ void FileTransferServer::flushWriteBuffer() {
 }
 
 void FileTransferServer::handleUploadStart() {
-  upload.success = false;
-  upload.preallocatedSize = 0;
-  upload.writeBufferPos = 0;
+  resetUpload(true);
   server->client().setNoDelay(true);
   server->client().setTimeout(kUploadSocketTimeoutMs);
 
@@ -332,7 +411,21 @@ void FileTransferServer::handleUploadStart() {
     LOG_ERR("XFER", "Upload missing X-File-Name header");
     return;
   }
-  upload.destPath = joinPath(dir.empty() ? "/" : dir.c_str(), name.c_str());
+  const char* ext = strrchr(name.c_str(), '.');
+  const bool isFont = ext && strcasecmp(ext, ".xgf2") == 0;
+  if (isFont) {
+    ReadingFont::migrate();
+    char fileName[ReadingFont::kMaxFileName + 1];
+    if (!ReadingFont::copyFilename(fileName, sizeof(fileName), name.c_str())) {
+      LOG_ERR("XFER", "Bad font name");
+      return;
+    }
+    char dest[192];
+    ReadingFont::makePath(dest, sizeof(dest), fileName);
+    upload.destPath = dest;
+  } else {
+    upload.destPath = joinPath(dir.empty() ? "/" : dir.c_str(), name.c_str());
+  }
   // FAT open/preAllocate can block; yield so lwIP can ACK bytes already in flight.
   pumpNetwork();
   if (!Storage.openFileForWrite("XFER", upload.destPath.c_str(), upload.file)) {
@@ -342,7 +435,10 @@ void FileTransferServer::handleUploadStart() {
   upload.success = true;
 
   const int contentLength = server->clientContentLength();
-  if (contentLength > 0) {
+  // Full-file preAllocate of a large book can stall SPI long enough to trip
+  // the task WDT and leave the card mid-FAT-update (needs a power cycle).
+  if (contentLength > 0 && static_cast<uint64_t>(contentLength) <= kMaxPreallocateBytes) {
+    pumpNetwork();
     if (upload.file.preAllocate(static_cast<uint64_t>(contentLength))) {
       upload.preallocatedSize = static_cast<uint64_t>(contentLength);
       LOG_INF("XFER", "preAllocate %d bytes", contentLength);
@@ -354,7 +450,7 @@ void FileTransferServer::handleUploadStart() {
 }
 
 void FileTransferServer::handleUploadChunk(const uint8_t* data, size_t len) {
-  if (!upload.file || !len) {
+  if (!upload.success || !upload.file || !len) {
     return;
   }
   if (!upload.writeBuffer) {
@@ -370,6 +466,9 @@ void FileTransferServer::handleUploadChunk(const uint8_t* data, size_t len) {
     offset += chunk;
     if (upload.writeBufferPos == UploadState::kWriteBufferSize) {
       flushWriteBuffer();
+      if (!upload.success) {
+        return;
+      }
     }
   }
 }
@@ -377,31 +476,47 @@ void FileTransferServer::handleUploadChunk(const uint8_t* data, size_t len) {
 void FileTransferServer::handleUploadEnd(size_t totalBytes) {
   if (upload.file) {
     flushWriteBuffer();
-    if (upload.preallocatedSize > totalBytes) {
+    if (upload.success && upload.preallocatedSize > totalBytes) {
       upload.file.truncate(totalBytes);
     }
     upload.file.flush();
     upload.file.close();
     upload.file = HalFile();
   }
+  if (upload.success) {
+    const char* leaf = basenameOf(upload.destPath.c_str());
+    if (ReadingFont::isFontFilename(leaf)) {
+      if (!settings.fontFile[0]) {
+        ReadingFont::setActive(leaf);
+      }
+    } else {
+      BookCache::removeFor(upload.destPath.c_str());
+    }
+    LOG_INF("XFER", "Uploaded %s (%lu bytes)", upload.destPath.c_str(), static_cast<unsigned long>(totalBytes));
+  } else if (!upload.destPath.empty()) {
+    Storage.remove(upload.destPath.c_str());
+    LOG_ERR("XFER", "Upload failed, removed %s", upload.destPath.c_str());
+  }
   pumpNetwork();
-  LOG_INF("XFER", "Uploaded %s (%lu bytes)", upload.destPath.c_str(), static_cast<unsigned long>(totalBytes));
 }
 
 void FileTransferServer::handleUploadAbort() {
-  upload.success = false;
-  upload.writeBufferPos = 0;
-  upload.file = HalFile();  // close before removing the partial file
-  if (!upload.destPath.empty()) {
-    Storage.remove(upload.destPath.c_str());
-  }
   LOG_ERR("XFER", "Upload aborted: %s", upload.destPath.c_str());
+  resetUpload(true);
 }
 
 void FileTransferServer::sendUploadResponse() const {
+  server->sendHeader("Connection", "close");
   if (upload.success) {
-    std::string msg = "File uploaded successfully: ";
-    msg += basenameOf(upload.destPath.c_str());
+    std::string msg;
+    const char* leaf = basenameOf(upload.destPath.c_str());
+    if (ReadingFont::isFontFilename(leaf)) {
+      msg = "Font installed: ";
+      msg += leaf;
+    } else {
+      msg = "File uploaded successfully: ";
+      msg += leaf;
+    }
     server->send(200, "text/plain", msg.c_str());
   } else {
     server->send(500, "text/plain", "Upload failed");
@@ -437,6 +552,7 @@ void FileTransferServer::handleRename() const {
   const std::string dir = dirnameOf(oldPath.c_str());
   const std::string newPath = joinPath(dir.c_str(), newName.c_str());
   if (Storage.rename(oldPath.c_str(), newPath.c_str())) {
+    BookCache::removeFor(oldPath.c_str());
     server->send(200, "text/plain", "OK");
   } else {
     server->send(500, "text/plain", "Rename failed");
@@ -456,6 +572,7 @@ void FileTransferServer::handleMove() const {
   }
   const std::string newPath = joinPath(dest.c_str(), basenameOf(oldPath.c_str()));
   if (Storage.rename(oldPath.c_str(), newPath.c_str())) {
+    BookCache::removeFor(oldPath.c_str());
     server->send(200, "text/plain", "OK");
   } else {
     server->send(500, "text/plain", "Move failed");
@@ -468,6 +585,10 @@ void FileTransferServer::handleDelete() const {
     return;
   }
   const std::string path = server->arg("path").c_str();
+  if (path.empty() || path == "/") {
+    server->send(403, "text/plain", "Cannot delete root");
+    return;
+  }
   if (isProtectedPath(path.c_str())) {
     server->send(403, "text/plain", "Protected file");
     return;
@@ -475,12 +596,95 @@ void FileTransferServer::handleDelete() const {
   HalFile file = Storage.open(path.c_str());
   const bool isDir = file && file.isDirectory();
   file = HalFile();  // close before remove/rmdir
-  const bool ok = isDir ? Storage.rmdir(path.c_str()) : Storage.remove(path.c_str());
+  bool ok = false;
+  if (isDir) {
+    ok = deleteDirContents(path.c_str()) && Storage.rmdir(path.c_str());
+  } else if (Storage.remove(path.c_str())) {
+    BookCache::removeFor(path.c_str());
+    ok = true;
+  }
   if (ok) {
+    LOG_INF("XFER", "Deleted %s", path.c_str());
     server->send(200, "text/plain", "OK");
   } else {
-    server->send(500, "text/plain", isDir ? "Folder not empty or missing" : "Delete failed");
+    LOG_ERR("XFER", "Delete failed: %s", path.c_str());
+    server->send(500, "text/plain", isDir ? "Could not delete folder" : "Delete failed");
   }
+}
+
+void FileTransferServer::handleFonts() const {
+  ReadingFont::migrate();
+  HalFile dir = Storage.open(ReadingFont::kDir);
+  std::string json;
+  json.reserve(512);
+  json.push_back('[');
+  bool first = true;
+  if (dir && dir.isDirectory()) {
+    char name[HalFile::kMaxNameBytes];
+    size_t listed = 0;
+    for (HalFile file = dir.openNextFile(); file; file = dir.openNextFile()) {
+      if (listed >= 32) {
+        break;
+      }
+      if (file.isDirectory() || file.getName(name, sizeof(name)) == 0 || !ReadingFont::isFontFilename(name)) {
+        continue;
+      }
+      if (!first) {
+        json.push_back(',');
+      }
+      first = false;
+      ++listed;
+      json += "{\"name\":\"";
+      appendJsonEscaped(json, name);
+      json += "\",\"size\":";
+      json += std::to_string(file.fileSize());
+      json += ",\"active\":";
+      json += (settings.fontFile[0] && strcmp(name, settings.fontFile) == 0) ? "true" : "false";
+      json += "}";
+    }
+  }
+  json.push_back(']');
+  server->send(200, "application/json", json.c_str());
+}
+
+void FileTransferServer::handleFontSelect() {
+  if (!server->hasArg("name")) {
+    server->send(400, "text/plain", "Missing name");
+    return;
+  }
+  if (!ReadingFont::setActive(server->arg("name").c_str())) {
+    server->send(404, "text/plain", "Font not found");
+    return;
+  }
+  server->send(200, "text/plain", "OK");
+}
+
+void FileTransferServer::handleFontDelete() {
+  if (!server->hasArg("name")) {
+    server->send(400, "text/plain", "Missing name");
+    return;
+  }
+  char fileName[ReadingFont::kMaxFileName + 1];
+  if (!ReadingFont::copyFilename(fileName, sizeof(fileName), server->arg("name").c_str())) {
+    server->send(400, "text/plain", "Bad name");
+    return;
+  }
+  char path[192];
+  ReadingFont::makePath(path, sizeof(path), fileName);
+  if (!Storage.exists(path)) {
+    server->send(404, "text/plain", "Font not found");
+    return;
+  }
+  if (!Storage.remove(path)) {
+    server->send(500, "text/plain", "Delete failed");
+    return;
+  }
+  if (strcmp(settings.fontFile, fileName) == 0) {
+    settings.fontFile[0] = '\0';
+    settings.save();
+  }
+  LOG_INF("XFER", "Deleted font %s", fileName);
+  server->send(200, "text/plain", "OK");
 }
 
 void FileTransferServer::handleNotFound() const { server->send(404, "text/plain", "Not found"); }

@@ -222,9 +222,9 @@ footer {
   <div id="dropZone">
     <div class="drop-kicker">upload</div>
     <div class="drop-title">Drop a file</div>
-    <div class="drop-sub">or click to browse</div>
+    <div class="drop-sub">.epub · .xtch · .xgf2 fonts · firmware .bin</div>
   </div>
-  <input type="file" id="fileInput">
+  <input type="file" id="fileInput" accept=".epub,.xtch,.txt,.xgf2,.bin">
   <div id="uploadProgress"><span id="uploadBar"></span></div>
   <div id="toolbar">
     <button id="cancelUpload" onclick="cancelUpload()">Cancel</button>
@@ -234,6 +234,10 @@ footer {
   <section class="panel">
     <div class="panel-head">Files</div>
     <div id="list"></div>
+  </section>
+  <section class="panel" style="margin-top:16px">
+    <div class="panel-head">Fonts</div>
+    <div id="fonts"></div>
   </section>
   <section class="panel" style="margin-top:16px">
     <div class="panel-head">Device</div>
@@ -272,7 +276,7 @@ function resetUploadUi() {
   document.getElementById("cancelUpload").style.display = "none";
   dropZone.classList.remove("busy");
   dropZone.querySelector(".drop-title").textContent = "Drop a file";
-  dropZone.querySelector(".drop-sub").textContent = "or click to browse";
+  dropZone.querySelector(".drop-sub").textContent = ".epub · .xtch · .xgf2 fonts · firmware .bin";
   document.getElementById("fileInput").value = "";
 }
 
@@ -385,6 +389,63 @@ function load() {
       });
     })
     .catch(e => status("Error: " + e, "bad"));
+  loadFonts();
+}
+
+function loadFonts() {
+  fetch("/api/fonts")
+    .then(r => r.json())
+    .then(items => {
+      const list = document.getElementById("fonts");
+      list.innerHTML = "";
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "No fonts yet — drop a .xgf2 file";
+        list.appendChild(empty);
+        return;
+      }
+      items.sort((a, b) => a.name.localeCompare(b.name));
+      items.forEach(item => {
+        const row = document.createElement("div");
+        row.className = "row";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = item.name + (item.active ? "  ·  in use" : "");
+        const sub = document.createElement("div");
+        sub.className = "sub";
+        sub.textContent = formatSize(item.size);
+        meta.appendChild(name);
+        meta.appendChild(sub);
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        if (!item.active) {
+          actions.appendChild(actionBtn("Use", () => {
+            fetch("/api/fonts/select", {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: "name=" + encodeURIComponent(item.name)
+            }).then(r => { if (!r.ok) throw new Error("select failed"); loadFonts(); status("Using " + item.name, "ok"); })
+              .catch(e => status("Error: " + e, "bad"));
+          }));
+        }
+        actions.appendChild(actionBtn("Delete", () => {
+          if (!confirm("Delete " + item.name + "?")) return;
+          fetch("/api/fonts/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: "name=" + encodeURIComponent(item.name)
+          }).then(r => { if (!r.ok) throw new Error("delete failed"); loadFonts(); status("Deleted " + item.name, "ok"); })
+            .catch(e => status("Error: " + e, "bad"));
+        }, "danger"));
+        row.appendChild(meta);
+        row.appendChild(actions);
+        list.appendChild(row);
+      });
+    })
+    .catch(e => status("Error: " + e, "bad"));
 }
 
 function upload(file, attempt) {
@@ -412,6 +473,7 @@ function upload(file, attempt) {
 
   const xhr = new XMLHttpRequest();
   activeUpload = xhr;
+  xhr.timeout = 10 * 60 * 1000;
   xhr.upload.onprogress = (e) => {
     const now = performance.now();
     const dt = (now - lastTime) / 1000;
@@ -440,11 +502,15 @@ function upload(file, attempt) {
     activeUpload = null;
     if (!attempt) {
       status("Connection dropped, retrying…");
-      retryTimer = setTimeout(() => { retryTimer = null; upload(file, 1); }, 500);
+      retryTimer = setTimeout(() => { retryTimer = null; upload(file, 1); }, 2000);
       return;
     }
     resetUploadUi();
-    status("Upload failed", "bad");
+    status("Upload failed — wait a moment and try again", "bad");
+  };
+  xhr.ontimeout = () => {
+    resetUploadUi();
+    status("Upload timed out — check the device and retry", "bad");
   };
   xhr.onabort = () => { resetUploadUi(); status("Upload canceled"); load(); };
   xhr.open("POST", "/upload");
@@ -494,8 +560,12 @@ function del_(fullPath) {
   if (!confirm("Delete " + fullPath + "?")) return;
   fetch("/delete", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: "path=" + encodeURIComponent(fullPath) })
-    .then(() => load())
-    .catch(e => status("Error: " + e, "bad"));
+    .then(r => r.text().then(t => {
+      if (!r.ok) throw new Error(t || "delete failed");
+      status("Deleted " + fullPath, "ok");
+      load();
+    }))
+    .catch(e => status("Error: " + e.message, "bad"));
 }
 
 const dropZone = document.getElementById("dropZone");

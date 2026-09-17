@@ -45,6 +45,9 @@ class FileTransferServer {
   void handleStatus() const;
   void handleTimezone();
   void handleFileList() const;
+  void handleFonts() const;
+  void handleFontSelect();
+  void handleFontDelete();
   void handleDownload() const;
   void handleMkdir() const;
   void handleRename() const;
@@ -70,4 +73,6 @@ class FileTransferServer {
   void sendUploadResponse() const;
   void writeUploadBytes(const uint8_t* data, size_t len);
   void flushWriteBuffer();
+  // Close the in-flight file. If `removePartial`, delete the incomplete dest.
+  void resetUpload(bool removePartial);
 };

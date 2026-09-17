@@ -11,8 +11,6 @@ class FileTransferScreen final : public Screen {
   std::string ssid;
   FileTransferServer server;
   bool started = false;
-  bool painted = false;
-  bool clockTried = false;
 
  public:
   FileTransferScreen(Gfx& gfx, MappedInput& input, std::string ssid)
