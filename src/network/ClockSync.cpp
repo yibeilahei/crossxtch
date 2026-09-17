@@ -107,10 +107,27 @@ void ClockSync::onWifiConnected() {
   bool dirty = false;
   const bool needTimezone = !settings.clockHasBeenSynced;
   if (halClock.isAvailable()) {
-    LOG_INF("CLK", "Syncing clock from NTP");
-    if (halClock.syncFromNTP() && !settings.clockHasBeenSynced) {
-      settings.clockHasBeenSynced = 1;
-      dirty = true;
+    bool ntpDue = true;
+    Rtc::DateTime now{};
+    if (halClock.nowUtc(now) && settings.ntpSyncYear >= 2020 && settings.ntpSyncMonth >= 1 &&
+        settings.ntpSyncMonth <= 12) {
+      const int last = static_cast<int>(settings.ntpSyncYear) * 12 + settings.ntpSyncMonth;
+      const int cur = static_cast<int>(now.year) * 12 + now.month;
+      ntpDue = cur > last;
+    }
+    if (ntpDue) {
+      LOG_INF("CLK", "Monthly NTP sync");
+      if (halClock.syncFromNTP()) {
+        Rtc::DateTime after{};
+        if (halClock.nowUtc(after)) {
+          settings.ntpSyncYear = after.year;
+          settings.ntpSyncMonth = after.month;
+        }
+        if (!settings.clockHasBeenSynced) {
+          settings.clockHasBeenSynced = 1;
+        }
+        dirty = true;
+      }
     }
   }
 

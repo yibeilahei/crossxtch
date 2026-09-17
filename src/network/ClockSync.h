@@ -1,7 +1,7 @@
 #pragma once
 
-// NTP (every call) + timezone HTTP (only until clockHasBeenSynced).
-// Call while STA is connected; safe after the file-transfer server is up.
+// NTP at most once per calendar month; timezone HTTP until first success.
+// Call while STA is connected and before the file-transfer server starts.
 namespace ClockSync {
 void onWifiConnected();
 }
