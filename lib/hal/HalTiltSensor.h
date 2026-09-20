@@ -29,7 +29,7 @@ class HalTiltSensor {
   unsigned long _wakeMs = 0;       // Timestamp of last wake() for stabilization
 
   // Tuning constants
-  static constexpr float RATE_THRESHOLD_DPS = 270.0f;      // Deg/sec speed to trigger flick
+  static constexpr float RATE_THRESHOLD_DPS = 150.0f;      // Deg/sec speed to trigger flick
   static constexpr float NEUTRAL_RATE_DPS = 50.0f;         // Must stop moving below this rate before next trigger
   static constexpr unsigned long COOLDOWN_MS = 1000;       // Minimum ms between triggers
   static constexpr unsigned long POLL_INTERVAL_MS = 50;    // 20 Hz polling
