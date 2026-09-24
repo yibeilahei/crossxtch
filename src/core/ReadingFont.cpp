@@ -165,5 +165,5 @@ bool ReadingFont::loadUi(XgfFont& font) {
   if (!activePath(path, sizeof(path))) {
     return false;
   }
-  return font.load(path, XgfFont::kUiLruBytes, false);
+  return font.load(path);
 }

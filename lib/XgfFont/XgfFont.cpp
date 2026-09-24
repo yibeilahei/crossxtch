@@ -22,72 +22,10 @@ uint8_t pixelAt(const uint8_t* slot, const uint8_t em, const int x, const int y)
   return static_cast<uint8_t>((b >> shift) & 3u);
 }
 
-bool planeKeep(const uint8_t v, const XgfFont::Plane plane) {
-  switch (plane) {
-    case XgfFont::Plane::Ink:
-      return v >= xgf::kInkThreshold;
-    case XgfFont::Plane::Lsb:
-      return (v & 1u) != 0;
-    case XgfFont::Plane::Msb:
-      return (v & 2u) != 0;
-  }
-  return false;
-}
-
-// AND-clear `nBits` MSB-first bits from `src` into a panel row at pixel `x`.
-void andNotBits(uint8_t* row, const int rowBits, int x, const uint8_t* src, int nBits) {
-  int s = 0;
-  if (x < 0) {
-    s = -x;
-    nBits -= s;
-    x = 0;
-  }
-  if (nBits <= 0 || x >= rowBits) {
-    return;
-  }
-  if (nBits > rowBits - x) {
-    nBits = rowBits - x;
-  }
-  while (nBits > 0) {
-    const int dOff = x & 7;
-    const int sOff = s & 7;
-    int take = 8 - dOff;
-    if (take > 8 - sOff) {
-      take = 8 - sOff;
-    }
-    if (take > nBits) {
-      take = nBits;
-    }
-    uint8_t chunk = static_cast<uint8_t>(src[s >> 3] << sOff);
-    chunk = static_cast<uint8_t>(chunk >> dOff);
-    const uint8_t m = static_cast<uint8_t>(((1u << take) - 1u) << (8 - dOff - take));
-    row[x >> 3] &= static_cast<uint8_t>(~(chunk & m));
-    x += take;
-    s += take;
-    nBits -= take;
-  }
-}
-
-void fillRowMask(uint8_t* mask, const uint8_t* src, const uint8_t em, const int rowBytes, const XgfFont::Plane plane) {
-  memset(mask, 0, 8);
-  int gx = 0;
-  for (int b = 0; b < rowBytes && gx < em; ++b) {
-    const uint8_t s = src[b];
-    for (int n = 0; n < 4 && gx < em; ++n, ++gx) {
-      const uint8_t v = static_cast<uint8_t>((s >> (6 - 2 * n)) & 3);
-      if (planeKeep(v, plane)) {
-        mask[gx >> 3] |= static_cast<uint8_t>(1u << (7 - (gx & 7)));
-      }
-    }
-  }
-}
-
 }  // namespace
 
-bool XgfFont::load(const char* path, const uint32_t lruMaxBytes, const bool wantRubyMap) {
+bool XgfFont::load(const char* path) {
   close();
-  lruLimit = lruMaxBytes ? lruMaxBytes : kLruBytes;
-  wantRuby = wantRubyMap;
   if (!path || path[0] == '\0') {
     error = "no font path";
     return false;
@@ -105,8 +43,7 @@ bool XgfFont::load(const char* path, const uint32_t lruMaxBytes, const bool want
   }
   opened = true;
   error = "";
-  LOG_INF("XGF", "Loaded %s em=%u ruby=%u body=%u rubySlots=%u iv=%u (lru later)", filepath, header.emPx,
-          header.rubyEmPx, header.bodyCount, header.rubyCount, header.intervalCount);
+  LOG_INF("XGF", "Loaded %s em=%u body=%u iv=%u", filepath, header.emPx, header.bodyCount, header.intervalCount);
   return true;
 }
 
@@ -196,22 +133,6 @@ bool XgfFont::loadTables() {
     return false;
   }
 
-  if (wantRuby && header.rubyCount > 0) {
-    rubyMap = static_cast<uint16_t*>(malloc(sizeof(uint16_t) * header.rubyCount));
-    if (!rubyMap) {
-      error = "ruby map oom";
-      return false;
-    }
-    if (!file.seekSet(header.rubyMapOff)) {
-      error = "ruby map seek";
-      return false;
-    }
-    const size_t rb = sizeof(uint16_t) * header.rubyCount;
-    if (file.read(rubyMap, rb) != static_cast<int>(rb)) {
-      error = "ruby map read";
-      return false;
-    }
-  }
   buildHi();
   return true;
 }
@@ -233,13 +154,7 @@ void XgfFont::buildHi() {
 void XgfFont::freeTables() {
   free(intervals);
   intervals = nullptr;
-  free(rubyMap);
-  rubyMap = nullptr;
 }
-
-void XgfFont::releaseMaps() { freeTables(); }
-
-bool XgfFont::restoreMaps() { return loadTables(); }
 
 bool XgfFont::allocTable(Lru& t, const uint16_t cap, const uint16_t stride) {
   if (cap == 0 || stride == 0) {
@@ -276,18 +191,6 @@ bool XgfFont::allocLru() {
   if (bodyLru.pixels) {
     return true;
   }
-  if (wantRuby && header.rubyStride > 0 && header.rubyCount > 0) {
-    uint16_t cap = static_cast<uint16_t>(kRubyLruBytes / header.rubyStride);
-    if (cap > header.rubyCount) {
-      cap = header.rubyCount;
-    }
-    if (cap == 0) {
-      cap = 1;
-    }
-    if (!allocTable(rubyLru, cap, header.rubyStride) && !allocTable(rubyLru, 1, header.rubyStride)) {
-      LOG_ERR("XGF", "ruby lru oom stride=%u", header.rubyStride);
-    }
-  }
 
   const uint16_t bodyStride = header.bodyStride;
   if (bodyStride == 0) {
@@ -297,8 +200,8 @@ bool XgfFont::allocLru() {
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   const size_t slack = 12 * 1024;
   size_t budget = largest > slack ? largest - slack : 0;
-  if (budget > lruLimit) {
-    budget = lruLimit;
+  if (budget > kUiLruBytes) {
+    budget = kUiLruBytes;
   }
   uint16_t cap = static_cast<uint16_t>(budget / bodyStride);
   if (cap == 0 && largest >= static_cast<size_t>(bodyStride) + 2048) {
@@ -313,16 +216,12 @@ bool XgfFont::allocLru() {
   if (cap < 8) {
     LOG_INF("XGF", "body lru small cap=%u stride=%u largest=%u", cap, bodyStride, static_cast<unsigned>(largest));
   }
-  LOG_INF("XGF", "LRU body %u x %u (%u bytes) ruby %u x %u (%u bytes)", bodyLru.cap, bodyLru.stride,
-          static_cast<unsigned>(bodyLru.cap * bodyLru.stride), rubyLru.cap, rubyLru.stride,
-          static_cast<unsigned>(rubyLru.cap * rubyLru.stride));
+  LOG_INF("XGF", "LRU body %u x %u (%u bytes)", bodyLru.cap, bodyLru.stride,
+          static_cast<unsigned>(bodyLru.cap * bodyLru.stride));
   return true;
 }
 
-void XgfFont::freeLru() {
-  freeTable(bodyLru);
-  freeTable(rubyLru);
-}
+void XgfFont::freeLru() { freeTable(bodyLru); }
 
 uint16_t XgfFont::glyphId(const uint32_t cp) const {
   if (!intervals || cp > 0xFFFF) {
@@ -350,50 +249,19 @@ uint16_t XgfFont::glyphId(const uint32_t cp) const {
   return 0xFFFF;
 }
 
-uint16_t XgfFont::rubySlot(const uint16_t bodyId) const {
-  if (!rubyMap || header.rubyCount == 0) {
-    return 0xFFFF;
+bool XgfFont::readSlot(const uint16_t bodyId, uint8_t* dest) {
+  if (bodyId >= header.bodyCount) {
+    return false;
   }
-  uint16_t lo = 0;
-  uint16_t hiIx = header.rubyCount;
-  while (lo < hiIx) {
-    const uint16_t mid = static_cast<uint16_t>(lo + (hiIx - lo) / 2);
-    if (rubyMap[mid] < bodyId) {
-      lo = static_cast<uint16_t>(mid + 1);
-    } else {
-      hiIx = mid;
-    }
-  }
-  if (lo < header.rubyCount && rubyMap[lo] == bodyId) {
-    return lo;
-  }
-  return 0xFFFF;
-}
-
-bool XgfFont::readSlot(const uint16_t bodyId, const bool ruby, uint8_t* dest) {
-  uint32_t off = 0;
-  uint16_t stride = 0;
-  if (ruby) {
-    const uint16_t slot = rubySlot(bodyId);
-    if (slot == 0xFFFF) {
-      return false;
-    }
-    stride = header.rubyStride;
-    off = header.rubyBitsOff + static_cast<uint32_t>(slot) * stride;
-  } else {
-    if (bodyId >= header.bodyCount) {
-      return false;
-    }
-    stride = header.bodyStride;
-    off = header.bodyBitsOff + static_cast<uint32_t>(bodyId) * stride;
-  }
+  const uint16_t stride = header.bodyStride;
+  const uint32_t off = header.bodyBitsOff + static_cast<uint32_t>(bodyId) * stride;
   if (!file.seekSet(off)) {
     return false;
   }
   return file.read(dest, stride) == static_cast<int>(stride);
 }
 
-const uint8_t* XgfFont::cacheIn(Lru& t, const uint16_t bodyId, const bool ruby) {
+const uint8_t* XgfFont::cacheIn(Lru& t, const uint16_t bodyId) {
   if (!t.pixels || t.cap == 0) {
     return nullptr;
   }
@@ -420,7 +288,7 @@ const uint8_t* XgfFont::cacheIn(Lru& t, const uint16_t bodyId, const bool ruby) 
     slot = t.used++;
   }
   uint8_t* dest = t.pixels + static_cast<size_t>(slot) * t.stride;
-  if (!readSlot(bodyId, ruby, dest)) {
+  if (!readSlot(bodyId, dest)) {
     t.entries[slot].id = 0xFFFF;
     return nullptr;
   }
@@ -429,14 +297,14 @@ const uint8_t* XgfFont::cacheIn(Lru& t, const uint16_t bodyId, const bool ruby) 
   return dest;
 }
 
-const uint8_t* XgfFont::cacheSlot(const uint16_t bodyId, const bool ruby) {
+const uint8_t* XgfFont::cacheSlot(const uint16_t bodyId) {
   if (!bodyLru.pixels && !allocLru()) {
     return nullptr;
   }
-  return cacheIn(ruby ? rubyLru : bodyLru, bodyId, ruby);
+  return cacheIn(bodyLru, bodyId);
 }
 
-void XgfFont::prewarm(const uint16_t* bodyIds, const uint16_t count, const bool ruby) {
+void XgfFont::prewarm(const uint16_t* bodyIds, const uint16_t count) {
   if (!bodyIds || count == 0 || !opened) {
     return;
   }
@@ -469,13 +337,9 @@ void XgfFont::prewarm(const uint16_t* bodyIds, const uint16_t count, const bool 
     order[j] = v;
   }
   for (uint16_t i = 0; i < n; ++i) {
-    if (ruby && rubySlot(order[i]) == 0xFFFF) {
-      continue;
-    }
-    const Lru& table = ruby ? rubyLru : bodyLru;
     bool hit = false;
-    for (uint16_t k = 0; k < table.used; ++k) {
-      if (table.entries[k].id == order[i]) {
+    for (uint16_t k = 0; k < bodyLru.used; ++k) {
+      if (bodyLru.entries[k].id == order[i]) {
         hit = true;
         break;
       }
@@ -485,77 +349,16 @@ void XgfFont::prewarm(const uint16_t* bodyIds, const uint16_t count, const bool 
     } else {
       ++misses;
     }
-    (void)cacheSlot(order[i], ruby);
+    (void)cacheSlot(order[i]);
   }
-  LOG_INF("XGF", "prewarm %s n=%u hit=%u miss=%u %lums", ruby ? "ruby" : "body", n, hits, misses, millis() - t0);
-}
-
-bool XgfFont::blit(Gfx& gfx, const int x, const int y, const uint16_t bodyId, const bool ruby, const bool rotate90,
-                   const Plane plane) {
-  const uint8_t* slot = cacheSlot(bodyId, ruby);
-  if (!slot) {
-    return false;
-  }
-  const uint8_t em = ruby ? header.rubyEmPx : header.emPx;
-  if (em == 0) {
-    return false;
-  }
-  uint8_t* fb = gfx.frameBuffer();
-  if (!fb) {
-    return false;
-  }
-  const int stride = gfx.stride();
-  const int pw = gfx.fbWidth();
-  const int ph = gfx.fbHeight();
-  const int rowBytes = (static_cast<int>(em) + 3) / 4;
-
-  if (rotate90) {
-    // Source row gy is consecutive phyX on panel row phyY (90° CW).
-    uint8_t mask[8];
-    for (int gy = 0; gy < em; ++gy) {
-      const int phyY = ph - x - em + gy;
-      if (phyY < 0 || phyY >= ph) {
-        continue;
-      }
-      fillRowMask(mask, slot + gy * rowBytes, em, rowBytes, plane);
-      andNotBits(fb + phyY * stride, pw, y, mask, em);
-    }
-    return true;
-  }
-
-  // Upright (ruby): source row is a panel column.
-  for (int gy = 0; gy < em; ++gy) {
-    const int phyX = y + gy;
-    if (phyX < 0 || phyX >= pw) {
-      continue;
-    }
-    const uint8_t clr = static_cast<uint8_t>(~(1u << (7 - (phyX & 7))));
-    const int col = phyX >> 3;
-    const uint8_t* src = slot + gy * rowBytes;
-    int gx = 0;
-    for (int b = 0; b < rowBytes && gx < em; ++b) {
-      const uint8_t s = src[b];
-      for (int n = 0; n < 4 && gx < em; ++n, ++gx) {
-        const uint8_t v = static_cast<uint8_t>((s >> (6 - 2 * n)) & 3);
-        if (!planeKeep(v, plane)) {
-          continue;
-        }
-        const int phyY = ph - 1 - x - gx;
-        if (phyY < 0 || phyY >= ph) {
-          continue;
-        }
-        fb[phyY * stride + col] &= clr;
-      }
-    }
-  }
-  return true;
+  LOG_INF("XGF", "prewarm n=%u hit=%u miss=%u %lums", n, hits, misses, millis() - t0);
 }
 
 bool XgfFont::blitUi(Gfx& gfx, const int x, const int y, const uint16_t bodyId, const int size, const bool black) {
   if (size <= 0) {
     return false;
   }
-  const uint8_t* slot = cacheSlot(bodyId, false);
+  const uint8_t* slot = cacheSlot(bodyId);
   if (!slot) {
     return false;
   }

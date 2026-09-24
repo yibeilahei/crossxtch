@@ -142,7 +142,7 @@ void FontsScreen::render() {
         }
       }
     }
-    cjk.prewarm(ids, n, false);
+    cjk.prewarm(ids, n);
   }
   for (int i = window; i < last; ++i) {
     fillRow(i);

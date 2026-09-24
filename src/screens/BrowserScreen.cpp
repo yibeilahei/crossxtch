@@ -239,7 +239,7 @@ void BrowserScreen::render() {
       for (int i = window; i < last; ++i) {
         collect(entries[static_cast<size_t>(i)].c_str());
       }
-      cjk.prewarm(ids, n, false);
+      cjk.prewarm(ids, n);
     }
     for (int i = window; i < last; ++i) {
       ui::drawRow(gfx, top + (i - window) * rowH, rowH, entries[static_cast<size_t>(i)].c_str(), i == index,

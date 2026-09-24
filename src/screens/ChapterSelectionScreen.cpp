@@ -123,7 +123,7 @@ void ChapterSelectionScreen::render() {
         }
       }
     }
-    face->prewarm(ids, n, false);
+    face->prewarm(ids, n);
   }
   for (int i = window; i < last; ++i) {
     fillLabel(i);
