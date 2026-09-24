@@ -5,12 +5,10 @@
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
-#include <XgfFont.h>
 #include <Xtch.h>
 
 #include <cstdio>
 
-#include "core/ReadingFont.h"
 #include "core/Settings.h"
 #include "core/UiList.h"
 #include "core/UiText.h"
@@ -24,36 +22,16 @@ void HomeScreen::refreshMenu() {
   }
 }
 
-void HomeScreen::loadCjk() {
-  if (itemCount != 4) {
-    cjk.close();
-    return;
-  }
-  if (cjk.loaded()) {
-    return;
-  }
-  if (!ReadingFont::loadUi(cjk)) {
-    LOG_INF("HOME", "No UI font (%s)", cjk.lastError());
-  }
-}
-
 void HomeScreen::onEnter() {
   Screen::onEnter();
   refreshMenu();
-  loadCjk();
   LOG_INF("HOME", "Continue %s last='%s'", itemCount == 4 ? "yes" : "no", settings.lastBookPath);
   requestUpdate();
-}
-
-void HomeScreen::onExit() {
-  cjk.close();
-  Screen::onExit();
 }
 
 void HomeScreen::onResume() {
   Screen::onResume();
   refreshMenu();
-  loadCjk();
 }
 
 void HomeScreen::loop() {
@@ -68,24 +46,18 @@ void HomeScreen::loop() {
     const bool hasContinue = itemCount == 4;
     // Item order: [Continue?], Browse, File Transfer, Settings.
     int i = index - (hasContinue ? 1 : 0);
-    // Drop the UI face before browse (reloads the same .xgf2) or Wi-Fi.
-    cjk.close();
-    bool ok = true;
     if (hasContinue && index == 0) {
       LOG_DBG("HOME", "Continue");
-      ok = goToReader(settings.lastBookPath);
+      goToReader(settings.lastBookPath);
     } else if (i == 0) {
       LOG_DBG("HOME", "Browse");
-      ok = goToBrowser();
+      goToBrowser();
     } else if (i == 1) {
       LOG_DBG("HOME", "File Transfer");
-      ok = goToWifiFileTransfer();
+      goToWifiFileTransfer();
     } else {
       LOG_DBG("HOME", "Settings");
-      ok = goToSettings();
-    }
-    if (!ok) {
-      loadCjk();
+      goToSettings();
     }
   }
 }
@@ -123,7 +95,7 @@ void HomeScreen::render() {
   }
 
   if (hasContinue) {
-    cjk.drawUtf8(gfx, FONT_UI, 24, gfx.height() - 48, settings.lastBookPath, true, gfx.width() - 24);
+    gfx.drawText(FONT_UI, 24, gfx.height() - 48, settings.lastBookPath);
   }
   presentUi();
 }

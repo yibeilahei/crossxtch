@@ -16,7 +16,6 @@
 #include "core/UiList.h"
 #include "core/UiText.h"
 #include "core/fontIds.h"
-#include "screens/FontsScreen.h"
 #include "screens/LanguageScreen.h"
 
 #ifndef CROSSXTCH_VERSION
@@ -30,12 +29,11 @@ constexpr int kLanguage = 0;
 constexpr int kSleep = 1;
 constexpr int kRefresh = 2;
 constexpr int kNight = 3;
-constexpr int kFont = 4;
-int itemCount() { return hasTilt() ? 10 : 8; }
-int tiltIndex() { return 5; }
-int gyroIndex() { return 6; }
-int cacheIndex() { return hasTilt() ? 7 : 5; }
-int firmwareIndex() { return hasTilt() ? 8 : 6; }
+int itemCount() { return hasTilt() ? 9 : 7; }
+int tiltIndex() { return 4; }
+int gyroIndex() { return 5; }
+int cacheIndex() { return hasTilt() ? 6 : 4; }
+int firmwareIndex() { return hasTilt() ? 7 : 5; }
 
 void formatTrueSleep(char* out, size_t outSize) {
   if (settings.trueSleepMinutes == Settings::kSleepNone) {
@@ -153,14 +151,6 @@ void SettingsScreen::loop() {
       settings.nightMode = settings.nightMode ? 0 : 1;
       display.setInverted(settings.nightMode != 0);
       LOG_INF("SET", "Night mode %s", settings.nightMode ? "on" : "off");
-    } else if (index == kFont) {
-      auto screen = makeUniqueNoThrow<FontsScreen>(gfx, input);
-      if (!screen) {
-        LOG_ERR("SET", "OOM: fonts");
-        return;
-      }
-      push(std::move(screen));
-      return;
     } else if (hasTilt() && index == tiltIndex()) {
       settings.tiltPageTurn = settings.tiltPageTurn ? 0 : 1;
       LOG_INF("SET", "Tilt page turn %s", settings.tiltPageTurn ? "on" : "off");
@@ -219,22 +209,21 @@ void SettingsScreen::render() {
 
   const char* cacheLabel =
       cacheArmed ? uiText::clearCacheConfirm : (cacheCleared ? uiText::cacheCleared : uiText::clearCache);
-  const char* labels[10];
+  const char* labels[9];
   labels[0] = lang;
   labels[1] = deep;
   labels[2] = refreshLabel();
   labels[3] = night;
-  labels[4] = uiText::readingFont;
   if (hasTilt()) {
-    labels[5] = tilt;
-    labels[6] = gyro;
-    labels[7] = cacheLabel;
-    labels[8] = uiText::updateFirmware;
-    labels[9] = uiText::back;
+    labels[4] = tilt;
+    labels[5] = gyro;
+    labels[6] = cacheLabel;
+    labels[7] = uiText::updateFirmware;
+    labels[8] = uiText::back;
   } else {
-    labels[5] = cacheLabel;
-    labels[6] = uiText::updateFirmware;
-    labels[7] = uiText::back;
+    labels[4] = cacheLabel;
+    labels[5] = uiText::updateFirmware;
+    labels[6] = uiText::back;
   }
 
   const int rowH = gfx.lineHeight(FONT_UI) + 10;

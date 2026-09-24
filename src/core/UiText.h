@@ -1,6 +1,6 @@
 #pragma once
 
-// On-device UI copy. CJK must fit firmware jp_12 (Jōyō + kana + extra UI glyphs).
+// On-device UI copy. CJK must fit firmware jp_12 (Noto Sans JP ideographs + kana).
 // English / Japanese / Chinese. `apply()` after settings.language changes.
 #define UI_STRINGS(X)                                                                                                 \
   X(continueReading, "Continue", "続きから", "继续阅读")                                                              \
@@ -15,7 +15,6 @@
   X(nightMode, "Night mode: %s", "夜間モード: %s", "夜间模式: %s")                                                    \
   X(on, "On", "オン", "开")                                                                                           \
   X(off, "Off", "オフ", "关")                                                                                         \
-  X(readingFont, "Reading font", "本文フォント", "阅读字体")                                                          \
   X(tiltPageTurn, "Tilt page turn: %s", "傾きでページ送り: %s", "倾斜翻页: %s")                                        \
   X(gyroAutoOffNone, "Gyro auto-off: Off", "ジャイロ自動オフ: なし", "陀螺仪自动关闭: 关")                             \
   X(gyroAutoOffSec, "Gyro auto-off: %u sec", "ジャイロ自動オフ: %u秒", "陀螺仪自动关闭: %u秒")                         \
@@ -55,8 +54,6 @@
   X(chapterNamed, "%s (p%u-%u)", "%s (p%u-%u)", "%s (p%u-%u)")                                                         \
   X(goToPage, "Go to page", "ページ指定", "跳转页码")                                                                  \
   X(currentlyOnPage, "Currently page %lu", "現在 %lu ページ", "当前第 %lu 页")                                         \
-  X(noFonts, "No fonts", "フォントがありません", "没有字体")                                                          \
-  X(uploadFontHint, "Send .xgf2 via file transfer", "ファイル転送で.xgf2を送る", "通过文件传输发送.xgf2")              \
   X(updatingFirmware, "Updating", "更新しています", "正在更新")                                                       \
   X(doNotPowerOff, "Do not power off", "電源を切らないでください", "请勿关机")                                        \
   X(updateComplete, "Update complete", "更新が完了しました", "更新完成")                                              \

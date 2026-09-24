@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "core/BookCache.h"
-#include "core/ReadingFont.h"
 #include "core/Settings.h"
 #include "network/html/FileManagerPage.h"
 
@@ -194,9 +193,6 @@ bool FileTransferServer::begin() {
   server->on("/api/status", HTTP_GET, [this]() { handleStatus(); });
   server->on("/api/timezone", HTTP_POST, [this]() { handleTimezone(); });
   server->on("/api/files", HTTP_GET, [this]() { handleFileList(); });
-  server->on("/api/fonts", HTTP_GET, [this]() { handleFonts(); });
-  server->on("/api/fonts/select", HTTP_POST, [this]() { handleFontSelect(); });
-  server->on("/api/fonts/delete", HTTP_POST, [this]() { handleFontDelete(); });
   server->on("/download", HTTP_GET, [this]() { handleDownload(); });
   server->on("/mkdir", HTTP_POST, [this]() { handleMkdir(); });
   server->on("/rename", HTTP_POST, [this]() { handleRename(); });
@@ -412,20 +408,11 @@ void FileTransferServer::handleUploadStart() {
     return;
   }
   const char* ext = strrchr(name.c_str(), '.');
-  const bool isFont = ext && strcasecmp(ext, ".xgf2") == 0;
-  if (isFont) {
-    ReadingFont::migrate();
-    char fileName[ReadingFont::kMaxFileName + 1];
-    if (!ReadingFont::copyFilename(fileName, sizeof(fileName), name.c_str())) {
-      LOG_ERR("XFER", "Bad font name");
-      return;
-    }
-    char dest[192];
-    ReadingFont::makePath(dest, sizeof(dest), fileName);
-    upload.destPath = dest;
-  } else {
-    upload.destPath = joinPath(dir.empty() ? "/" : dir.c_str(), name.c_str());
+  if (ext && strcasecmp(ext, ".xgf2") == 0) {
+    LOG_ERR("XFER", "Rejected .xgf2 upload");
+    return;
   }
+  upload.destPath = joinPath(dir.empty() ? "/" : dir.c_str(), name.c_str());
   // FAT open/preAllocate can block; yield so lwIP can ACK bytes already in flight.
   pumpNetwork();
   if (!Storage.openFileForWrite("XFER", upload.destPath.c_str(), upload.file)) {
@@ -484,14 +471,7 @@ void FileTransferServer::handleUploadEnd(size_t totalBytes) {
     upload.file = HalFile();
   }
   if (upload.success) {
-    const char* leaf = basenameOf(upload.destPath.c_str());
-    if (ReadingFont::isFontFilename(leaf)) {
-      if (!settings.fontFile[0]) {
-        ReadingFont::setActive(leaf);
-      }
-    } else {
-      BookCache::removeFor(upload.destPath.c_str());
-    }
+    BookCache::removeFor(upload.destPath.c_str());
     LOG_INF("XFER", "Uploaded %s (%lu bytes)", upload.destPath.c_str(), static_cast<unsigned long>(totalBytes));
   } else if (!upload.destPath.empty()) {
     Storage.remove(upload.destPath.c_str());
@@ -508,15 +488,8 @@ void FileTransferServer::handleUploadAbort() {
 void FileTransferServer::sendUploadResponse() const {
   server->sendHeader("Connection", "close");
   if (upload.success) {
-    std::string msg;
-    const char* leaf = basenameOf(upload.destPath.c_str());
-    if (ReadingFont::isFontFilename(leaf)) {
-      msg = "Font installed: ";
-      msg += leaf;
-    } else {
-      msg = "File uploaded successfully: ";
-      msg += leaf;
-    }
+    std::string msg = "File uploaded successfully: ";
+    msg += basenameOf(upload.destPath.c_str());
     server->send(200, "text/plain", msg.c_str());
   } else {
     server->send(500, "text/plain", "Upload failed");
@@ -610,81 +583,6 @@ void FileTransferServer::handleDelete() const {
     LOG_ERR("XFER", "Delete failed: %s", path.c_str());
     server->send(500, "text/plain", isDir ? "Could not delete folder" : "Delete failed");
   }
-}
-
-void FileTransferServer::handleFonts() const {
-  ReadingFont::migrate();
-  HalFile dir = Storage.open(ReadingFont::kDir);
-  std::string json;
-  json.reserve(512);
-  json.push_back('[');
-  bool first = true;
-  if (dir && dir.isDirectory()) {
-    char name[HalFile::kMaxNameBytes];
-    size_t listed = 0;
-    for (HalFile file = dir.openNextFile(); file; file = dir.openNextFile()) {
-      if (listed >= 32) {
-        break;
-      }
-      if (file.isDirectory() || file.getName(name, sizeof(name)) == 0 || !ReadingFont::isFontFilename(name)) {
-        continue;
-      }
-      if (!first) {
-        json.push_back(',');
-      }
-      first = false;
-      ++listed;
-      json += "{\"name\":\"";
-      appendJsonEscaped(json, name);
-      json += "\",\"size\":";
-      json += std::to_string(file.fileSize());
-      json += ",\"active\":";
-      json += (settings.fontFile[0] && strcmp(name, settings.fontFile) == 0) ? "true" : "false";
-      json += "}";
-    }
-  }
-  json.push_back(']');
-  server->send(200, "application/json", json.c_str());
-}
-
-void FileTransferServer::handleFontSelect() {
-  if (!server->hasArg("name")) {
-    server->send(400, "text/plain", "Missing name");
-    return;
-  }
-  if (!ReadingFont::setActive(server->arg("name").c_str())) {
-    server->send(404, "text/plain", "Font not found");
-    return;
-  }
-  server->send(200, "text/plain", "OK");
-}
-
-void FileTransferServer::handleFontDelete() {
-  if (!server->hasArg("name")) {
-    server->send(400, "text/plain", "Missing name");
-    return;
-  }
-  char fileName[ReadingFont::kMaxFileName + 1];
-  if (!ReadingFont::copyFilename(fileName, sizeof(fileName), server->arg("name").c_str())) {
-    server->send(400, "text/plain", "Bad name");
-    return;
-  }
-  char path[192];
-  ReadingFont::makePath(path, sizeof(path), fileName);
-  if (!Storage.exists(path)) {
-    server->send(404, "text/plain", "Font not found");
-    return;
-  }
-  if (!Storage.remove(path)) {
-    server->send(500, "text/plain", "Delete failed");
-    return;
-  }
-  if (strcmp(settings.fontFile, fileName) == 0) {
-    settings.fontFile[0] = '\0';
-    settings.save();
-  }
-  LOG_INF("XFER", "Deleted font %s", fileName);
-  server->send(200, "text/plain", "OK");
 }
 
 void FileTransferServer::handleNotFound() const { server->send(404, "text/plain", "Not found"); }

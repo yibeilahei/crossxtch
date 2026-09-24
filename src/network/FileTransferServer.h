@@ -45,9 +45,6 @@ class FileTransferServer {
   void handleStatus() const;
   void handleTimezone();
   void handleFileList() const;
-  void handleFonts() const;
-  void handleFontSelect();
-  void handleFontDelete();
   void handleDownload() const;
   void handleMkdir() const;
   void handleRename() const;

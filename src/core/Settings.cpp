@@ -59,9 +59,9 @@ void Settings::load() {
     language = kLanguageUnset;
   }
   LOG_INF("SET",
-          "Loaded gyroOff=%u sec sleep=%u refresh=%u night=%u tilt=%u clock=%u tzq=%u lang=%u font='%s' last='%s'",
+          "Loaded gyroOff=%u sec sleep=%u refresh=%u night=%u tilt=%u clock=%u tzq=%u lang=%u last='%s'",
           gyroAutoOffSeconds, trueSleepMinutes, refreshEveryNPages, nightMode, tiltPageTurn, clockHasBeenSynced,
-          clockUtcOffsetQ, language, fontFile, lastBookPath);
+          clockUtcOffsetQ, language, lastBookPath);
 }
 
 void Settings::save() const {

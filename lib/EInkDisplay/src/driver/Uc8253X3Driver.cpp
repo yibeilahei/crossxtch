@@ -221,11 +221,15 @@ bool Uc8253X3Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t*
     bus.sendPlaneFlipped(CMD_DTM2, fb, _h, _wb);
   }
 
-  // doFullSync re-powers the charge pump even if already on (higher current).
-  if (!_isScreenOn || doFullSync) {
+  // A full sync re-issues PON while the charge pump is already on (higher
+  // current). That second PON does not pulse BUSY. waitBusy's X3 edge timeout
+  // is 1s, so waiting here stalled every full sync for a pulse that never came.
+  if (!_isScreenOn) {
     bus.cmd(CMD_POWER_ON);
     bus.waitBusy(" X3_PON");
     _isScreenOn = true;
+  } else if (doFullSync) {
+    bus.cmd(CMD_POWER_ON);
   }
   bus.cmd(CMD_DISPLAY_REFRESH);
   // Confirm the waveform actually started (BUSY dropped LOW) before handing the

@@ -222,9 +222,9 @@ footer {
   <div id="dropZone">
     <div class="drop-kicker">upload</div>
     <div class="drop-title">Drop a file</div>
-    <div class="drop-sub">.xtch · .xgf2 fonts · firmware .bin</div>
+    <div class="drop-sub">.xtch · firmware .bin</div>
   </div>
-  <input type="file" id="fileInput" accept=".xtch,.xgf2,.bin">
+  <input type="file" id="fileInput" accept=".xtch,.bin">
   <div id="uploadProgress"><span id="uploadBar"></span></div>
   <div id="toolbar">
     <button id="cancelUpload" onclick="cancelUpload()">Cancel</button>
@@ -234,10 +234,6 @@ footer {
   <section class="panel">
     <div class="panel-head">Files</div>
     <div id="list"></div>
-  </section>
-  <section class="panel" style="margin-top:16px">
-    <div class="panel-head">Fonts</div>
-    <div id="fonts"></div>
   </section>
   <section class="panel" style="margin-top:16px">
     <div class="panel-head">Device</div>
@@ -276,7 +272,7 @@ function resetUploadUi() {
   document.getElementById("cancelUpload").style.display = "none";
   dropZone.classList.remove("busy");
   dropZone.querySelector(".drop-title").textContent = "Drop a file";
-  dropZone.querySelector(".drop-sub").textContent = ".xtch · .xgf2 fonts · firmware .bin";
+  dropZone.querySelector(".drop-sub").textContent = ".xtch · firmware .bin";
   document.getElementById("fileInput").value = "";
 }
 
@@ -383,63 +379,6 @@ function load() {
         actions.appendChild(actionBtn("Move", () => move_(full)));
         actions.appendChild(actionBtn("Delete", () => del_(full), "danger"));
         row.appendChild(icon);
-        row.appendChild(meta);
-        row.appendChild(actions);
-        list.appendChild(row);
-      });
-    })
-    .catch(e => status("Error: " + e, "bad"));
-  loadFonts();
-}
-
-function loadFonts() {
-  fetch("/api/fonts")
-    .then(r => r.json())
-    .then(items => {
-      const list = document.getElementById("fonts");
-      list.innerHTML = "";
-      if (!items.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = "No fonts yet — drop a .xgf2 file";
-        list.appendChild(empty);
-        return;
-      }
-      items.sort((a, b) => a.name.localeCompare(b.name));
-      items.forEach(item => {
-        const row = document.createElement("div");
-        row.className = "row";
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        const name = document.createElement("div");
-        name.className = "name";
-        name.textContent = item.name + (item.active ? "  ·  in use" : "");
-        const sub = document.createElement("div");
-        sub.className = "sub";
-        sub.textContent = formatSize(item.size);
-        meta.appendChild(name);
-        meta.appendChild(sub);
-        const actions = document.createElement("div");
-        actions.className = "actions";
-        if (!item.active) {
-          actions.appendChild(actionBtn("Use", () => {
-            fetch("/api/fonts/select", {
-              method: "POST",
-              headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body: "name=" + encodeURIComponent(item.name)
-            }).then(r => { if (!r.ok) throw new Error("select failed"); loadFonts(); status("Using " + item.name, "ok"); })
-              .catch(e => status("Error: " + e, "bad"));
-          }));
-        }
-        actions.appendChild(actionBtn("Delete", () => {
-          if (!confirm("Delete " + item.name + "?")) return;
-          fetch("/api/fonts/delete", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: "name=" + encodeURIComponent(item.name)
-          }).then(r => { if (!r.ok) throw new Error("delete failed"); loadFonts(); status("Deleted " + item.name, "ok"); })
-            .catch(e => status("Error: " + e, "bad"));
-        }, "danger"));
         row.appendChild(meta);
         row.appendChild(actions);
         list.appendChild(row);

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Gfx.h>
-#include <XgfFont.h>
 
 #include "core/fontIds.h"
 
@@ -45,16 +44,11 @@ inline void drawMenuRow(Gfx& gfx, const int y, const int rowH, const char* label
   }
 }
 
-inline void drawRow(Gfx& gfx, const int y, const int rowH, const char* label, const bool selected,
-                    XgfFont* cjk = nullptr) {
+inline void drawRow(Gfx& gfx, const int y, const int rowH, const char* label, const bool selected) {
   if (selected) {
     gfx.fillRect(8, y - 2, gfx.width() - 16, rowH, true);
   }
-  if (cjk) {
-    cjk->drawUtf8(gfx, FONT_UI, 16, y, label, !selected, gfx.width() - 16);
-  } else {
-    gfx.drawText(FONT_UI, 16, y, label, !selected);
-  }
+  gfx.drawText(FONT_UI, 16, y, label, !selected);
 }
 
 }  // namespace ui

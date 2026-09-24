@@ -1,6 +1,5 @@
 #include "ChapterSelectionScreen.h"
 
-#include <EpdFontFamily.h>
 #include <Gfx.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -10,10 +9,8 @@
 #include <cstdio>
 #include <cstring>
 
-#include "core/ReadingFont.h"
 #include "core/UiList.h"
 #include "core/UiText.h"
-#include "core/fontIds.h"
 #include "screens/PageJumpScreen.h"
 #include "screens/ReaderScreen.h"
 
@@ -32,21 +29,6 @@ ChapterSelectionScreen::ChapterSelectionScreen(Gfx& gfx, MappedInput& input, Rea
       break;
     }
   }
-}
-
-void ChapterSelectionScreen::onEnter() {
-  Screen::onEnter();
-  if (ReadingFont::loadUi(owned)) {
-    face = &owned;
-  } else {
-    LOG_INF("CH", "No UI font (%s)", owned.lastError());
-  }
-}
-
-void ChapterSelectionScreen::onExit() {
-  owned.close();
-  face = nullptr;
-  Screen::onExit();
 }
 
 void ChapterSelectionScreen::activate() {
@@ -105,29 +87,9 @@ void ChapterSelectionScreen::render() {
     }
     label[utf8SafeTruncateBuffer(label, static_cast<int>(strlen(label)))] = '\0';
   };
-  if (face && face->loaded()) {
-    const EpdFontFamily* ui = gfx.font(FONT_UI);
-    uint16_t ids[192];
-    uint16_t n = 0;
-    for (int i = window; i < last; ++i) {
-      fillLabel(i);
-      const unsigned char* p = reinterpret_cast<const unsigned char*>(label);
-      uint32_t cp = 0;
-      while ((cp = utf8NextCodepoint(&p)) && n < 192) {
-        if (ui && ui->hasCodepoint(cp)) {
-          continue;
-        }
-        const uint16_t id = face->glyphId(cp);
-        if (id != 0xFFFF) {
-          ids[n++] = id;
-        }
-      }
-    }
-    face->prewarm(ids, n);
-  }
   for (int i = window; i < last; ++i) {
     fillLabel(i);
-    ui::drawRow(gfx, top + (i - window) * rowH, rowH, label, i == index, face);
+    ui::drawRow(gfx, top + (i - window) * rowH, rowH, label, i == index);
   }
   presentUi();
 }

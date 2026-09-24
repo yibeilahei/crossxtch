@@ -17,7 +17,6 @@
 #include "core/ScreenManager.h"
 #include "core/MappedInput.h"
 #include "core/Power.h"
-#include "core/ReadingFont.h"
 #include "core/Settings.h"
 #include "core/UiText.h"
 #include "core/fontIds.h"
@@ -95,7 +94,6 @@ void setup() {
   HalSystem::checkPanic();
   settings.load();
   uiText::apply();
-  ReadingFont::migrate();
   wifiCredentials.load();
   Frontlight.begin(0, 0, false);
 

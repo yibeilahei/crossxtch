@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Rasterize Jōyō kanji + kana + extra UI CJK into a 1-bit EpdFont.
+"""Rasterize Noto Sans JP CJK plus kana and extra UI ideographs into a 1-bit EpdFont.
 
 Matches Ubuntu 12: 12 pt at 150 DPI (~25 px). Latin is left to Ubuntu.
-Extra ideographs are taken from on-device UI strings (Chinese copy).
+Every CJK ideograph in the JP font is included (Jōyō is checked as a subset).
+UI strings may add simplified Chinese that the JP font does not cover; those
+come from --fallback-ttf.
 
 Example:
     .venv/bin/python tools/gen_ui_jp_font.py \\
@@ -85,7 +87,12 @@ def chunks(data: bytes, n: int):
 
 
 def is_cjk_ideograph(cp: int) -> bool:
-    return 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF or 0xF900 <= cp <= 0xFAFF
+    return (
+        0x3400 <= cp <= 0x4DBF
+        or 0x4E00 <= cp <= 0x9FFF
+        or 0xF900 <= cp <= 0xFAFF
+        or 0x20000 <= cp <= 0x3FFFF
+    )
 
 
 def load_joyo(path: Path) -> list[int]:
@@ -109,9 +116,14 @@ def load_extra_cps(paths: list[Path]) -> list[int]:
     return sorted(cps)
 
 
-def collect_cps(joyo: list[int], extra: list[int]) -> list[int]:
+def ideographs_in_face(face) -> list[int]:
+    return [cp for cp, gi in face.get_chars() if gi and is_cjk_ideograph(cp)]
+
+
+def collect_cps(joyo: list[int], extra: list[int], face_ideo: list[int]) -> list[int]:
     cps = set(joyo)
     cps.update(extra)
+    cps.update(face_ideo)
     for a, b in RANGES:
         for cp in range(a, b + 1):
             cps.add(cp)
@@ -215,7 +227,9 @@ def main() -> int:
     extra_only = [cp for cp in extra if cp not in set(joyo)]
 
     face = freetype.Face(str(ttf))
+    face.select_charmap(freetype.FT_ENCODING_UNICODE)
     face.set_char_size(PT << 6, PT << 6, DPI, DPI)
+    face_ideo = ideographs_in_face(face)
     fallback = None
     fallback_path = Path(args.fallback_ttf) if args.fallback_ttf else None
     if fallback_path and fallback_path.is_file():
@@ -224,7 +238,7 @@ def main() -> int:
         print(f"fallback font: {fallback_path}", file=sys.stderr)
     load_flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO | freetype.FT_LOAD_FORCE_AUTOHINT
 
-    wanted = collect_cps(joyo, extra)
+    wanted = collect_cps(joyo, extra, face_ideo)
     present: list[int] = []
     missing_joyo: list[int] = []
     missing_extra: list[int] = []
@@ -297,7 +311,8 @@ def main() -> int:
     emit_cpp(out, glyphs, intervals, bytes(blob), metrics)
     print(
         f"Wrote {out}  {out.stat().st_size / 1024:.1f} KB source  "
-        f"glyphs={len(glyphs)} extra_ui={len(extra_only)} bitmap={len(blob)} intervals={len(intervals)} "
+        f"glyphs={len(glyphs)} font_ideo={len(face_ideo)} extra_ui={len(extra_only)} "
+        f"bitmap={len(blob)} intervals={len(intervals)} "
         f"advanceY={metrics[0]} ascender={metrics[1]} descender={metrics[2]}",
         file=sys.stderr,
     )

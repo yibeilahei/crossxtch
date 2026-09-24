@@ -30,7 +30,7 @@ struct Settings {
   uint8_t clockUtcOffsetQ = 48;    // 48 = UTC+0; 15-minute steps, 0 = UTC-12, 104 = UTC+14
   uint16_t ntpSyncYear = 0;        // UTC year of last NTP; 0 = never
   uint8_t ntpSyncMonth = 0;        // 1-12; NTP at most once per calendar month
-  char fontFile[80]{};             // basename in /.crossxtch/fonts/; empty = first installed
+  char fontFile[80]{};             // unused; kept so a v9 settings.bin does not shift
   uint8_t language = kLanguageUnset;  // kLanguageEnglish/Japanese/Chinese; unset until first pick
 
   void load();
