@@ -18,11 +18,7 @@
   X(tiltPageTurn, "Tilt page turn: %s", "傾きでページ送り: %s", "倾斜翻页: %s")                                        \
   X(gyroAutoOffNone, "Gyro auto-off: Off", "ジャイロ自動オフ: なし", "陀螺仪自动关闭: 关")                             \
   X(gyroAutoOffSec, "Gyro auto-off: %u sec", "ジャイロ自動オフ: %u秒", "陀螺仪自动关闭: %u秒")                         \
-  X(clearCache, "Clear cache", "キャッシュ削除", "清除缓存")                                                          \
-  X(clearCacheConfirm, "Clear cache: Confirm?", "キャッシュ削除: 確認?", "清除缓存: 确认?")                           \
-  X(cacheCleared, "Cache cleared", "キャッシュを削除しました", "缓存已清除")                                          \
   X(updateFirmware, "Update firmware", "ファームウェア更新", "更新固件")                                              \
-  X(back, "Back", "戻る", "返回")                                                                                     \
   X(serverStartFailed, "Could not start server", "サーバーを開始できません", "无法启动服务器")                        \
   X(networkSsid, "Network: %s", "ネットワーク: %s", "网络: %s")                                                        \
   X(browserHint, "Browser: books, fonts, updates", "ブラウザ: 本・フォント・更新", "浏览器: 书籍、字体、更新")         \

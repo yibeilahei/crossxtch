@@ -5,8 +5,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <string>
-#include <vector>
 
 #include "core/Settings.h"
 
@@ -45,37 +43,6 @@ void removeFor(const char* bookPath) {
     settings.lastBookPath[0] = '\0';
     settings.save();
   }
-}
-
-unsigned clearAll() {
-  HalFile dir = Storage.open(Settings::kDir);
-  if (!dir || !dir.isDirectory()) {
-    return 0;
-  }
-  std::vector<std::string> doomed;
-  char name[HalFile::kMaxNameBytes];
-  for (HalFile file = dir.openNextFile(); file; file = dir.openNextFile()) {
-    if (file.isDirectory() || file.getName(name, sizeof(name)) == 0) {
-      continue;
-    }
-    const bool sidecar = (name[0] == 'a' || name[0] == 't' || name[0] == 'c' || name[0] == 'p') &&
-                         name[1] == '_' && strstr(name, ".bin") != nullptr;
-    if (sidecar || strcmp(name, "work.xhtml") == 0) {
-      doomed.emplace_back(name);
-    }
-  }
-  dir = HalFile();
-  unsigned n = 0;
-  char full[96];
-  for (const auto& leaf : doomed) {
-    snprintf(full, sizeof(full), "%s/%s", Settings::kDir, leaf.c_str());
-    if (Storage.remove(full)) {
-      ++n;
-      LOG_INF("CACHE", "Cleared %s", full);
-    }
-  }
-  LOG_INF("CACHE", "Cleared %u files", n);
-  return n;
 }
 
 }  // namespace BookCache

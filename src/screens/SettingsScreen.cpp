@@ -11,7 +11,6 @@
 
 #include <Memory.h>
 
-#include "core/BookCache.h"
 #include "core/Settings.h"
 #include "core/UiList.h"
 #include "core/UiText.h"
@@ -29,11 +28,10 @@ constexpr int kLanguage = 0;
 constexpr int kSleep = 1;
 constexpr int kRefresh = 2;
 constexpr int kNight = 3;
-int itemCount() { return hasTilt() ? 9 : 7; }
+int itemCount() { return hasTilt() ? 7 : 5; }
 int tiltIndex() { return 4; }
 int gyroIndex() { return 5; }
-int cacheIndex() { return hasTilt() ? 6 : 4; }
-int firmwareIndex() { return hasTilt() ? 7 : 5; }
+int firmwareIndex() { return hasTilt() ? 6 : 4; }
 
 void formatTrueSleep(char* out, size_t outSize) {
   if (settings.trueSleepMinutes == Settings::kSleepNone) {
@@ -128,7 +126,6 @@ void SettingsScreen::loop() {
     requestUpdate();
   }
   if (ui::applyDelta(index, input.consumeNavigationDelta(), itemCount())) {
-    cacheArmed = false;
     requestUpdate();
   } else if (input.wasReleased(MappedInput::Button::Confirm)) {
     if (index == kLanguage) {
@@ -157,22 +154,9 @@ void SettingsScreen::loop() {
     } else if (hasTilt() && index == gyroIndex()) {
       bumpGyroAutoOff();
       LOG_INF("SET", "Gyro auto-off %u sec", settings.gyroAutoOffSeconds);
-    } else if (index == cacheIndex()) {
-      if (!cacheArmed) {
-        cacheArmed = true;
-        cacheCleared = false;
-      } else {
-        BookCache::clearAll();
-        cacheArmed = false;
-        cacheCleared = true;
-      }
     } else if (index == firmwareIndex()) {
       settings.save();
       goToFirmwareUpdate();
-      return;
-    } else {
-      settings.save();
-      finish();
       return;
     }
     settings.save();
@@ -207,9 +191,7 @@ void SettingsScreen::render() {
   snprintf(tilt, sizeof(tilt), uiText::tiltPageTurn, settings.tiltPageTurn ? uiText::on : uiText::off);
   formatGyroAutoOff(gyro, sizeof(gyro));
 
-  const char* cacheLabel =
-      cacheArmed ? uiText::clearCacheConfirm : (cacheCleared ? uiText::cacheCleared : uiText::clearCache);
-  const char* labels[9];
+  const char* labels[7];
   labels[0] = lang;
   labels[1] = deep;
   labels[2] = refreshLabel();
@@ -217,13 +199,9 @@ void SettingsScreen::render() {
   if (hasTilt()) {
     labels[4] = tilt;
     labels[5] = gyro;
-    labels[6] = cacheLabel;
-    labels[7] = uiText::updateFirmware;
-    labels[8] = uiText::back;
+    labels[6] = uiText::updateFirmware;
   } else {
-    labels[4] = cacheLabel;
-    labels[5] = uiText::updateFirmware;
-    labels[6] = uiText::back;
+    labels[4] = uiText::updateFirmware;
   }
 
   const int rowH = gfx.lineHeight(FONT_UI) + 10;
