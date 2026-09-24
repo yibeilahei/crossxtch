@@ -36,13 +36,10 @@ ChapterSelectionScreen::ChapterSelectionScreen(Gfx& gfx, MappedInput& input, Rea
 
 void ChapterSelectionScreen::onEnter() {
   Screen::onEnter();
-  face = reader.cjkFont();
-  if (!face) {
-    if (ReadingFont::loadUi(owned)) {
-      face = &owned;
-    } else {
-      LOG_INF("CH", "No UI font (%s)", owned.lastError());
-    }
+  if (ReadingFont::loadUi(owned)) {
+    face = &owned;
+  } else {
+    LOG_INF("CH", "No UI font (%s)", owned.lastError());
   }
 }
 

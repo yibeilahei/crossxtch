@@ -7,11 +7,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <strings.h>
 
 #include "puff.h"
 
 uint8_t* XtchBook::pageBuffer = nullptr;
 size_t XtchBook::pageBufferCapacity = 0;
+
+bool isXtchPath(const char* path) {
+  if (!path) {
+    return false;
+  }
+  const size_t n = std::strlen(path);
+  return n >= 5 && strcasecmp(path + (n - 5), ".xtch") == 0;
+}
 
 namespace {
 // Round buffer growth up to a fixed granularity so repeated regrowth (compressed

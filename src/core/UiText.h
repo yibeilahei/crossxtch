@@ -68,10 +68,8 @@
   X(writeFailed, "Write failed", "書き込みに失敗", "写入失败")                                                        \
   X(couldNotOpenFile, "Could not open file", "ファイルを開けません", "无法打开文件")                                  \
   X(couldNotReadFile, "Could not read file", "読み込みに失敗", "读取失败")                                            \
-  X(opening, "Opening", "開いています", "正在打开")                                                                   \
   X(couldNotOpenBook, "Could not open book", "本を開けません", "无法打开书籍")                                        \
   X(outOfMemory, "Out of memory", "メモリ不足", "内存不足")                                                           \
-  X(fontMissing, "Font missing", "フォントがありません", "缺少字体")                                                  \
   X(fileNotFound, "File not found", "ファイルがありません", "找不到文件")                                             \
   X(sdCardError, "SD card error", "SDカードエラー", "SD卡错误")                                                        \
   X(loading, "Loading...", "読み込み中...", "正在加载...")                                                             \

@@ -54,12 +54,7 @@ const char* error(const char* en) {
     const char* const* text;
   } kMap[] = {
       {"file not found", &fileNotFound},
-      {"no path", &fileNotFound},
-      {"text missing", &fileNotFound},
       {"out of memory", &outOfMemory},
-      {"font missing", &fontMissing},
-      {"not loaded", &fontMissing},
-      {"font maps", &fontMissing},
       {"invalid firmware", &invalidFirmware},
       {"write failed", &writeFailed},
       {"could not open file", &couldNotOpenFile},

@@ -5,7 +5,7 @@
 #include <cstddef>
 
 // Installed .xgf2 faces under /.crossxtch/fonts/. One is selected in Settings
-// and used for UI CJK and .txt/.epub. Only that file is loaded in RAM.
+// and used for UI CJK. Only that file is loaded in RAM.
 namespace ReadingFont {
 
 constexpr const char* kDir = "/.crossxtch/fonts";

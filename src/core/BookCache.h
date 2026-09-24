@@ -2,8 +2,9 @@
 
 #include <cstdint>
 
-// Sidecar files under /.crossxtch keyed by FNV-1a of the book path:
-// a_*.bin atoms, t_*.bin page index, c_*.bin chapter TOC, p_*.bin progress.
+// Sidecar files under /.crossxtch keyed by FNV-1a of the book path.
+// p_*.bin is reading progress. a_*/t_*/c_*.bin and work.xhtml are leftover
+// typesetter files; clear still deletes them.
 namespace BookCache {
 
 uint32_t key(const char* path);

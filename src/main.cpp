@@ -142,7 +142,7 @@ void setup() {
     return;
   }
 
-  if (wakeupReason == HalGPIO::WakeupReason::PowerButton && settings.lastBookPath[0] != '\0' &&
+  if (wakeupReason == HalGPIO::WakeupReason::PowerButton && isXtchPath(settings.lastBookPath) &&
       Storage.exists(settings.lastBookPath)) {
     LOG_INF("MAIN", "Resume %s", settings.lastBookPath);
     screenManager.goToReader(settings.lastBookPath);

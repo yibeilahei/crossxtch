@@ -8,6 +8,9 @@
 
 class Gfx;
 
+// Path ends in ".xtch", case-insensitive.
+bool isXtchPath(const char* path);
+
 // Streaming XTCH reader. The source file stays open while the book is open so
 // page turns do not re-walk FAT; close() releases it.
 class XtchBook {

@@ -6,6 +6,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <XgfFont.h>
+#include <Xtch.h>
 
 #include <cstdio>
 
@@ -16,7 +17,7 @@
 #include "core/fontIds.h"
 
 void HomeScreen::refreshMenu() {
-  const bool hasContinue = settings.lastBookPath[0] != '\0' && Storage.exists(settings.lastBookPath);
+  const bool hasContinue = isXtchPath(settings.lastBookPath) && Storage.exists(settings.lastBookPath);
   itemCount = hasContinue ? 4 : 3;
   if (index >= itemCount) {
     index = 0;
@@ -67,8 +68,7 @@ void HomeScreen::loop() {
     const bool hasContinue = itemCount == 4;
     // Item order: [Continue?], Browse, File Transfer, Settings.
     int i = index - (hasContinue ? 1 : 0);
-    // Drop the UI face before pushing a screen that may load the same .xgf2
-    // (reader, browser) or needs the heap (Wi-Fi).
+    // Drop the UI face before browse (reloads the same .xgf2) or Wi-Fi.
     cjk.close();
     bool ok = true;
     if (hasContinue && index == 0) {
