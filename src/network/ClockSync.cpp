@@ -1,6 +1,5 @@
 #include "network/ClockSync.h"
 
-#include <HTTPClient.h>
 #include <HalClock.h>
 #include <Logging.h>
 #include <WiFi.h>
@@ -58,28 +57,108 @@ bool parseOffsetJson(const char* body, uint8_t& out) {
   return secondsToBiased(sign * (hours * 3600 + mins * 60), out);
 }
 
-bool httpGetBody(const char* url, char* buf, const size_t bufSize) {
-  WiFiClient client;
-  HTTPClient http;
-  http.setConnectTimeout(3000);
-  http.setTimeout(4000);
-  http.setReuse(false);
-  if (!http.begin(client, url)) {
+// http://host[:port]/path  — plain TCP. HTTPS is not linked.
+bool parseHttpUrl(const char* url, char* host, const size_t hostSize, uint16_t& port, const char*& path) {
+  constexpr char kScheme[] = "http://";
+  if (!url || strncmp(url, kScheme, sizeof(kScheme) - 1) != 0) {
     return false;
   }
-  const int code = http.GET();
-  bool ok = false;
-  if (code == HTTP_CODE_OK) {
-    const String body = http.getString();
-    if (!body.isEmpty() && static_cast<size_t>(body.length()) + 1 <= bufSize) {
-      memcpy(buf, body.c_str(), static_cast<size_t>(body.length()) + 1);
-      ok = true;
+  const char* start = url + (sizeof(kScheme) - 1);
+  const char* slash = strchr(start, '/');
+  const char* hostEnd = slash ? slash : start + strlen(start);
+  const char* colon = nullptr;
+  for (const char* c = start; c < hostEnd; ++c) {
+    if (*c == ':') {
+      colon = c;
     }
-  } else {
-    LOG_ERR("CLK", "GET %s -> %d", url, code);
   }
-  http.end();
-  return ok;
+  const size_t hostLen = static_cast<size_t>((colon ? colon : hostEnd) - start);
+  if (hostLen == 0 || hostLen >= hostSize) {
+    return false;
+  }
+  memcpy(host, start, hostLen);
+  host[hostLen] = '\0';
+  port = 80;
+  if (colon) {
+    const int parsed = atoi(colon + 1);
+    if (parsed <= 0 || parsed > 65535) {
+      return false;
+    }
+    port = static_cast<uint16_t>(parsed);
+  }
+  path = slash ? slash : "/";
+  return true;
+}
+
+bool httpGetBody(const char* url, char* buf, const size_t bufSize) {
+  if (bufSize < 2) {
+    return false;
+  }
+  char host[96];
+  uint16_t port = 80;
+  const char* path = "/";
+  if (!parseHttpUrl(url, host, sizeof(host), port, path)) {
+    LOG_ERR("CLK", "Bad URL %s", url ? url : "");
+    return false;
+  }
+
+  WiFiClient client;
+  if (!client.connect(host, port, 3000)) {
+    LOG_ERR("CLK", "Connect %s:%u failed", host, port);
+    return false;
+  }
+  client.print("GET ");
+  client.print(path);
+  client.print(" HTTP/1.0\r\nHost: ");
+  client.print(host);
+  client.print("\r\nConnection: close\r\n\r\n");
+
+  char line[160];
+  int status = -1;
+  bool inHeader = true;
+  size_t bodyLen = 0;
+  buf[0] = '\0';
+  const unsigned long deadline = millis() + 4000;
+  while ((client.connected() || client.available()) && millis() < deadline) {
+    if (!client.available()) {
+      delay(10);
+      continue;
+    }
+    if (inHeader) {
+      const size_t n = client.readBytesUntil('\n', line, sizeof(line) - 1);
+      if (n == 0) {
+        continue;
+      }
+      line[n] = '\0';
+      if (line[n - 1] == '\r') {
+        line[n - 1] = '\0';
+      }
+      if (line[0] == '\0') {
+        inHeader = false;
+        continue;
+      }
+      if (status < 0 && strncmp(line, "HTTP/", 5) == 0) {
+        const char* sp = strchr(line, ' ');
+        status = sp ? atoi(sp + 1) : -1;
+      }
+      continue;
+    }
+    const int c = client.read();
+    if (c < 0) {
+      break;
+    }
+    if (bodyLen + 1 >= bufSize) {
+      break;
+    }
+    buf[bodyLen++] = static_cast<char>(c);
+    buf[bodyLen] = '\0';
+  }
+  client.stop();
+  if (status != 200 || bodyLen == 0) {
+    LOG_ERR("CLK", "GET %s -> %d (%u bytes)", url, status, static_cast<unsigned>(bodyLen));
+    return false;
+  }
+  return true;
 }
 
 bool fetchTimezoneOffset(uint8_t& out) {
